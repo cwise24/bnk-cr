@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BNK Custom Resources — Connection Diagram</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;800&display=swap');
+
+:root {
+–bg:        #080c14;
+–grid:      rgba(0,200,255,.04);
+–panel:     rgba(5,20,40,.85);
+–border:    rgba(0,200,255,.18);
+–accent:    #00c8ff;
+–accent2:   #ff6b35;
+–accent3:   #7fff6e;
+–accent4:   #c97bff;
+–text:      #c8e8ff;
+–muted:     #5a7a9a;
+–glow:      0 0 18px rgba(0,200,255,.35);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+background: var(–bg);
+font-family: ‘Exo 2’, sans-serif;
+color: var(–text);
+min-height: 100vh;
+overflow-x: hidden;
+}
+
+/* grid background */
+body::before {
+content: ‘’;
+position: fixed; inset: 0;
+background-image:
+linear-gradient(var(–grid) 1px, transparent 1px),
+linear-gradient(90deg, var(–grid) 1px, transparent 1px);
+background-size: 40px 40px;
+pointer-events: none;
+z-index: 0;
+}
+
+.page {
+position: relative; z-index: 1;
+max-width: 1100px;
+margin: 0 auto;
+padding: 40px 24px 60px;
+}
+
+/* ── Header ── */
+header {
+text-align: center;
+margin-bottom: 48px;
+animation: fadeDown .7s ease both;
+}
+header .eyebrow {
+font-family: ‘Share Tech Mono’, monospace;
+font-size: .72rem;
+letter-spacing: .25em;
+color: var(–accent);
+text-transform: uppercase;
+margin-bottom: 8px;
+}
+header h1 {
+font-size: clamp(1.6rem, 4vw, 2.6rem);
+font-weight: 800;
+letter-spacing: -.02em;
+background: linear-gradient(135deg, var(–accent) 0%, #fff 55%, var(–accent4) 100%);
+-webkit-background-clip: text;
+-webkit-text-fill-color: transparent;
+background-clip: text;
+line-height: 1.15;
+}
+header p {
+margin-top: 12px;
+color: var(–muted);
+font-size: .9rem;
+font-weight: 300;
+}
+
+/* ── Diagram wrapper ── */
+.diagram {
+position: relative;
+width: 100%;
+}
+
+svg.arch {
+width: 100%;
+height: auto;
+display: block;
+overflow: visible;
+}
+svg.arch a { cursor: pointer; }
+svg.arch a:hover rect { opacity: 0.85; filter: brightness(1.25); }
+
+/* ── Legend ── */
+.legend {
+display: flex;
+flex-wrap: wrap;
+gap: 12px 28px;
+justify-content: center;
+margin: 32px 0 44px;
+animation: fadeUp .7s .3s ease both;
+}
+.legend-item {
+display: flex;
+align-items: center;
+gap: 8px;
+font-size: .78rem;
+color: var(–muted);
+font-family: ‘Share Tech Mono’, monospace;
+}
+.legend-dot {
+width: 10px; height: 10px;
+border-radius: 2px;
+flex-shrink: 0;
+}
+
+/* ── Explanation cards ── */
+.cards {
+display: grid;
+grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+gap: 16px;
+animation: fadeUp .7s .5s ease both;
+}
+
+.card {
+background: var(–panel);
+border: 1px solid var(–border);
+border-radius: 10px;
+padding: 18px 20px;
+position: relative;
+overflow: hidden;
+transition: border-color .25s, transform .25s;
+}
+.card::before {
+content: ‘’;
+position: absolute;
+top: 0; left: 0; right: 0;
+height: 2px;
+background: var(–stripe, var(–accent));
+opacity: .8;
+}
+.card:hover {
+border-color: var(–stripe, var(–accent));
+transform: translateY(-3px);
+}
+.card h3 {
+font-family: ‘Share Tech Mono’, monospace;
+font-size: .82rem;
+color: var(–stripe, var(–accent));
+margin-bottom: 7px;
+letter-spacing: .05em;
+}
+.card p {
+font-size: .82rem;
+color: var(–muted);
+line-height: 1.6;
+font-weight: 300;
+}
+
+@keyframes fadeDown {
+from { opacity: 0; transform: translateY(-20px); }
+to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeUp {
+from { opacity: 0; transform: translateY(20px); }
+to   { opacity: 1; transform: translateY(0); }
+}
+</style>
+
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <div class="eyebrow">F5 BIG-IP Next for Kubernetes</div>
+    <h1>Custom Resource Connections</h1>
+    <p>How BNK CRs compose to define traffic policy from infrastructure to workload</p>
+  </header>
+
+  <!-- Legend -->
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#00c8ff"></div>Gateway / Routing</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#ff6b35"></div>Network / Egress</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#7fff6e"></div>Security / Firewall</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#c97bff"></div>Policy Attachment</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#ffe066"></div>Instance / Infra</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#00e5cc"></div>AI / Analytics</div>
+    <div class="legend-item">
+      <svg width="28" height="10"><line x1="0" y1="5" x2="20" y2="5" stroke="#00c8ff" stroke-width="1.5" stroke-dasharray="4 3"/><polygon points="20,2 28,5 20,8" fill="#00c8ff"/></svg>
+      references / attaches
+    </div>
+    <div class="legend-item">
+      <svg width="28" height="10"><line x1="0" y1="5" x2="20" y2="5" stroke="#7fff6e" stroke-width="1.5"/><polygon points="20,2 28,5 20,8" fill="#7fff6e"/></svg>
+      selects / applies
+    </div>
+  </div>
+
+  <!-- Diagram SVG -->
+
+  <div class="diagram">
+  <svg class="arch" viewBox="0 0 1100 520" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <!-- glows -->
+      <filter id="glow-blue" x="-30%" y="-30%" width="160%" height="160%">
+        <feGaussianBlur stdDeviation="4" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+      <filter id="glow-green" x="-30%" y="-30%" width="160%" height="160%">
+        <feGaussianBlur stdDeviation="3" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+      <!-- arrowheads -->
+      <marker id="arr-blue"  markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#00c8ff"/>
+      </marker>
+      <marker id="arr-orange" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#ff6b35"/>
+      </marker>
+      <marker id="arr-green" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#7fff6e"/>
+      </marker>
+      <marker id="arr-purple" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#c97bff"/>
+      </marker>
+      <marker id="arr-yellow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#ffe066"/>
+      </marker>
+      <marker id="arr-teal" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#00e5cc"/>
+      </marker>
+    </defs>
+
+```
+<!-- ═══════════════════════ NODES ═══════════════════════ -->
+<!-- Grid: x = 80 | 430 | 950    y = 30 | 160 | 290 | 420 -->
+
+<!-- ROW 1 -->
+<a href="https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/bnk-fwpolicy-in-gateway-api.html" target="_blank" style="cursor:pointer">
+<g transform="translate(80,30)">
+  <rect x="-75" y="0" width="150" height="54" rx="8" fill="#0d180d" stroke="#7fff6e" stroke-width="1.5"/>
+  <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="10" fill="#7fff6e" letter-spacing=".05em">F5BigFwPolicy</text>
+  <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">Firewall policy rules</text>
+  <text x="0" y="47" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#7fff6e" opacity=".6">security / firewall</text>
+</g>
+</a>
+
+<a href="https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/cneinstance-parameters.html" target="_blank" style="cursor:pointer">
+<g transform="translate(430,30)" filter="url(#glow-blue)">
+  <rect x="-90" y="0" width="180" height="54" rx="8" fill="#0d1e2e" stroke="#ffe066" stroke-width="1.5"/>
+  <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="11" fill="#ffe066" letter-spacing=".08em">CNEInstance</text>
+  <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">CNE desired-state declaration</text>
+  <text x="0" y="47" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#ffe066" opacity=".6">TMM + control plane</text>
+</g>
+</a>
+
+<a href="https://clouddocs.f5.com/service-proxy/latest/spk-snatpool-crd.html" target="_blank" style="cursor:pointer">
+<g transform="translate(950,30)">
+  <rect x="-95" y="0" width="190" height="54" rx="8" fill="#1a1008" stroke="#ff6b35" stroke-width="1.5"/>
+  <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="11" fill="#ff6b35" letter-spacing=".08em">F5SPKSnatpool</text>
+  <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">SNAT IP pool (optional)</text>
+  <text x="0" y="47" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#ff6b35" opacity=".6">BGP advertised</text>
+</g>
+</a>
+
+<!-- ROW 2 -->
+<a href="https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/bnk-bnkSecPolicy.html" target="_blank" style="cursor:pointer">
+<g transform="translate(80,160)">
+  <rect x="-75" y="0" width="150" height="54" rx="8" fill="#0d180d" stroke="#7fff6e" stroke-width="1.5"/>
+  <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="10" fill="#7fff6e" letter-spacing=".05em">BNKSecPolicy</text>
+  <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">GW or GW Listener attach</text>
+  <text x="0" y="47" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#7fff6e" opacity=".6">security / firewall</text>
+</g>
+</a>
+
+<a href="https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/bnk-ficforgatewayapi.html" target="_blank" style="cursor:pointer">
+<g transform="translate(430,160)" filter="url(#glow-blue)">
+  <rect x="-100" y="0" width="200" height="54" rx="8" fill="#0d1e2e" stroke="#00c8ff" stroke-width="2"/>
+  <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="11" fill="#00c8ff" letter-spacing=".08em">F5BNKGateway</text>
+  <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">IPAM + BIG-IP binding (FIC)</text>
+  <text x="0" y="47" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#00c8ff" opacity=".6">gateway / routing</text>
+</g>
+</a>
+
+<a href="https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/spk-egress-crd.html" target="_blank" style="cursor:pointer">
+<g transform="translate(950,160)">
+  <rect x="-95" y="0" width="190" height="54" rx="8" fill="#1a1008" stroke="#ff6b35" stroke-width="1.5"/>
+  <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="11" fill="#ff6b35" letter-spacing=".08em">F5SPKEgress</text>
+  <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">Pod egress connectivity</text>
+  <text x="0" y="47" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#ff6b35" opacity=".6">SNAT none/automap/pool</text>
+</g>
+</a>
+
+<!-- ROW 3 -->
+<a href="https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/bnk-irule-in-gatewayapi.html" target="_blank" style="cursor:pointer">
+<g transform="translate(80,290)">
+  <rect x="-75" y="0" width="150" height="54" rx="8" fill="#0f1a10" stroke="#c97bff" stroke-width="1.5"/>
+  <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="10" fill="#c97bff" letter-spacing=".05em">BNKNetPolicy</text>
+  <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">GW or GW Listener attach</text>
+  <text x="0" y="47" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#c97bff" opacity=".6">policy attachment</text>
+</g>
+</a>
+
+<a href="https://gateway-api.sigs.k8s.io/concepts/api-overview/" target="_blank" style="cursor:pointer">
+<g transform="translate(430,290)" filter="url(#glow-blue)">
+  <rect x="-100" y="0" width="200" height="54" rx="8" fill="#0d2030" stroke="#00c8ff" stroke-width="1.5" stroke-dasharray="5 3"/>
+  <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="11" fill="#00c8ff" letter-spacing=".08em">Gateway</text>
+  <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">K8s Gateway API resource</text>
+  <text x="0" y="47" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#00c8ff" opacity=".6">listeners · up to 64</text>
+</g>
+</a>
+
+<a href="https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/bnk-nvidia-nim-ai-lb-feature.html" target="_blank" style="cursor:pointer">
+<g transform="translate(950,290)">
+  <rect x="-80" y="0" width="160" height="54" rx="8" fill="#1a1008" stroke="#00e5cc" stroke-width="1.5"/>
+  <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="11" fill="#00e5cc" letter-spacing=".08em">Prometheus</text>
+  <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">LLM inference metrics</text>
+  <text x="0" y="47" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#00e5cc" opacity=".6">NIM / vLLM scrape</text>
+</g>
+</a>
+
+<!-- ROW 4 -->
+<a href="https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/bnk-irule-in-gatewayapi.html" target="_blank" style="cursor:pointer">
+<g transform="translate(80,420)">
+  <rect x="-75" y="0" width="150" height="54" rx="8" fill="#12101a" stroke="#c97bff" stroke-width="1.5" stroke-dasharray="5 3"/>
+  <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="10" fill="#c97bff" letter-spacing=".05em">iRule Manifest</text>
+  <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">TCL iRule definition</text>
+  <text x="0" y="47" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#c97bff" opacity=".6">configmap / inline</text>
+</g>
+</a>
+
+<a href="https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/bnk-gateway-api-httproute.html" target="_blank" style="cursor:pointer">
+<g transform="translate(340,420)" filter="url(#glow-blue)">
+  <rect x="-90" y="0" width="180" height="54" rx="8" fill="#0d1e2e" stroke="#00c8ff" stroke-width="1.5"/>
+  <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="11" fill="#00c8ff" letter-spacing=".08em">HTTPRoute</text>
+  <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">L7 routing &amp; path rules</text>
+  <text x="0" y="47" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#00c8ff" opacity=".6">standard gateway API</text>
+</g>
+</a>
+
+<a href="https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/bnk-gateway-api-l4route.html" target="_blank" style="cursor:pointer">
+<g transform="translate(540,420)" filter="url(#glow-blue)">
+  <rect x="-90" y="0" width="180" height="54" rx="8" fill="#0d1e2e" stroke="#00c8ff" stroke-width="1.5"/>
+  <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="11" fill="#00c8ff" letter-spacing=".08em">L4Route</text>
+  <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">TCP/UDP routing rules</text>
+  <text x="0" y="47" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#00c8ff" opacity=".6">gateway / routing</text>
+</g>
+</a>
+
+<a href="https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/how-tos/ai-related-features/intelligent-ai-load-balancing/cr-parameters.html" target="_blank" style="cursor:pointer">
+<g transform="translate(950,420)">
+  <rect x="-80" y="0" width="160" height="54" rx="8" fill="#0d1e2e" stroke="#00e5cc" stroke-width="2"/>
+  <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="11" fill="#00e5cc" letter-spacing=".08em">f5-analyzer</text>
+  <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">LLM traffic analyzer pod</text>
+  <text x="0" y="47" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#00e5cc" opacity=".6">monitors routes · DPU</text>
+</g>
+</a>
+
+<!-- ═══════════════════════ EDGES ═══════════════════════ -->
+
+<!-- F5BigFwPolicy → BNKSecPolicy (straight vertical) -->
+<line x1="80" y1="84" x2="80" y2="157"
+      stroke="#7fff6e" stroke-width="1.5" marker-end="url(#arr-green)"/>
+<text x="88" y="128" font-family="Share Tech Mono,monospace" font-size="9" fill="#7fff6e" opacity=".7">referenced by</text>
+
+<!-- BNKSecPolicy → Gateway (straight diagonal) -->
+<line x1="155" y1="187" x2="327" y2="290"
+      stroke="#7fff6e" stroke-width="1.5" marker-end="url(#arr-green)"/>
+<text text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="9" fill="#7fff6e" opacity=".7"
+      transform="translate(241,246) rotate(31)">attaches to GW or GW Listener</text>
+
+<!-- BNKNetPolicy → Gateway (straight horizontal) -->
+<line x1="155" y1="317" x2="327" y2="317"
+      stroke="#c97bff" stroke-width="1.5" marker-end="url(#arr-purple)"/>
+<text text-anchor="middle" dy="-5" font-family="Share Tech Mono,monospace" font-size="9" fill="#c97bff" opacity=".7"
+      transform="translate(241,317)">attaches to GW or GW Listener</text>
+
+<!-- iRule Manifest → BNKNetPolicy (straight vertical) -->
+<line x1="80" y1="417" x2="80" y2="347"
+      stroke="#c97bff" stroke-width="1.5" marker-end="url(#arr-purple)"/>
+<text x="88" y="390" font-family="Share Tech Mono,monospace" font-size="9" fill="#c97bff" opacity=".7">referenced by</text>
+
+<!-- CNEInstance → F5BNKGateway (straight vertical) -->
+<line x1="430" y1="84" x2="430" y2="157"
+      stroke="#ffe066" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-yellow)"/>
+<text x="438" y="128" font-family="Share Tech Mono,monospace" font-size="9" fill="#ffe066" opacity=".7">provisions</text>
+
+<!-- F5BNKGateway → Gateway (straight vertical) -->
+<line x1="430" y1="214" x2="430" y2="287"
+      stroke="#00c8ff" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-blue)"/>
+<text x="438" y="257" font-family="Share Tech Mono,monospace" font-size="9" fill="#00c8ff" opacity=".7">binds IP</text>
+
+<!-- Gateway → HTTPRoute (straight vertical) -->
+<line x1="400" y1="344" x2="370" y2="417"
+      stroke="#00c8ff" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-blue)"/>
+<text x="368" y="388" font-family="Share Tech Mono,monospace" font-size="9" fill="#00c8ff" opacity=".7">parentRef</text>
+
+<!-- Gateway → L4Route (straight vertical) -->
+<line x1="460" y1="344" x2="510" y2="417"
+      stroke="#00c8ff" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-blue)"/>
+<text x="462" y="388" font-family="Share Tech Mono,monospace" font-size="9" fill="#00c8ff" opacity=".7">parentRef</text>
+
+<!-- F5SPKEgress → F5SPKSnatpool (straight vertical, optional) -->
+<line x1="950" y1="157" x2="950" y2="87"
+      stroke="#ff6b35" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arr-orange)"/>
+<text x="958" y="128" font-family="Share Tech Mono,monospace" font-size="9" fill="#ff6b35" opacity=".7">opt. ref pool</text>
+
+<!-- Gateway → F5SPKEgress (straight horizontal) -->
+<line x1="530" y1="187" x2="852" y2="187"
+      stroke="#ff6b35" stroke-width="1.5" marker-end="url(#arr-orange)"/>
+<text x="640" y="181" font-family="Share Tech Mono,monospace" font-size="9" fill="#ff6b35" opacity=".7">egress via</text>
+
+<!-- Prometheus → f5-analyzer (straight vertical) -->
+<line x1="950" y1="344" x2="950" y2="417"
+      stroke="#00e5cc" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-teal)"/>
+<text x="958" y="386" font-family="Share Tech Mono,monospace" font-size="9" fill="#00e5cc" opacity=".7">metrics</text>
+
+<!-- f5-analyzer → HTTPRoute + L4Route (below row, clean bus) -->
+<line x1="869" y1="447" x2="869" y2="492"
+      stroke="#00e5cc" stroke-width="1.5"/>
+<line x1="250" y1="492" x2="869" y2="492"
+      stroke="#00e5cc" stroke-width="1.5"/>
+<line x1="340" y1="477" x2="340" y2="492"
+      stroke="#00e5cc" stroke-width="1.5" marker-end="url(#arr-teal)"/>
+<line x1="540" y1="477" x2="540" y2="492"
+      stroke="#00e5cc" stroke-width="1.5" marker-end="url(#arr-teal)"/>
+<text x="590" y="506" font-family="Share Tech Mono,monospace" font-size="9" fill="#00e5cc" opacity=".7">monitors (HTTPRoute or L4Route)</text>
+
+<!-- ═══════════════════════ SWIM LANE LABELS ═══════════════════════ -->
+<text x="10" y="57" font-family="Share Tech Mono,monospace" font-size="9" fill="#ffffff" opacity=".18" transform="rotate(-90,10,57)" text-anchor="middle">INFRA</text>
+<text x="10" y="187" font-family="Share Tech Mono,monospace" font-size="9" fill="#ffffff" opacity=".18" transform="rotate(-90,10,187)" text-anchor="middle">POLICY</text>
+<text x="10" y="317" font-family="Share Tech Mono,monospace" font-size="9" fill="#ffffff" opacity=".18" transform="rotate(-90,10,317)" text-anchor="middle">GATEWAY</text>
+<text x="10" y="447" font-family="Share Tech Mono,monospace" font-size="9" fill="#ffffff" opacity=".18" transform="rotate(-90,10,447)" text-anchor="middle">ROUTES</text>
+
+<!-- row bands -->
+<rect x="0" y="10"  width="1100" height="74" rx="4" fill="rgba(255,224,102,.012)"/>
+<rect x="0" y="140" width="1100" height="80" rx="4" fill="rgba(0,200,255,.018)"/>
+<rect x="0" y="270" width="1100" height="80" rx="4" fill="rgba(0,200,255,.014)"/>
+<rect x="0" y="400" width="1100" height="80" rx="4" fill="rgba(0,200,255,.010)"/>
+```
+
+  </svg>
+  </div>
+
+  <!-- Explanation Cards -->
+
+  <div class="cards">
+    <div class="card" style="--stripe:#ffe066">
+      <h3>CNEInstance</h3>
+      <p>Declares the desired state of a BIG-IP Cloud-Native Edition (CNE) instance. Deploys the underlying data-plane component — the F5 Traffic Management Microkernel (TMM) workload — along with its control-plane components. Configures product type, deployment size, Gateway API enablement, optional modules (firewall ACL, intrusion prevention, intelligent LB, CGNAT, dynamic routing), networking, and registry settings. All other CRs depend on a running CNE instance.</p>
+    </div>
+    <div class="card" style="--stripe:#00c8ff">
+      <h3>F5BNKGateway</h3>
+      <p>Used with the F5 IPAM Controller (FIC) to automatically allocate VIP addresses for a Gateway. <strong style="color:#00c8ff">Note:</strong> Using BNKGateway in BIG-IP for Kubernetes is optional.</p>
+    </div>
+    <div class="card" style="--stripe:#00c8ff">
+      <h3>Gateway</h3>
+      <p>Standard Kubernetes Gateway API object. Declares listeners (up to 64 per gateway). HTTPRoute and L4Route attach here via <code>parentRef</code>.</p>
+    </div>
+    <div class="card" style="--stripe:#00c8ff">
+      <h3>HTTPRoute / L4Route</h3>
+      <p>Routing rules that reference a parent Gateway. HTTPRoute handles L7 path-based traffic; L4Route handles TCP/UDP port-based forwarding.</p>
+    </div>
+    <div class="card" style="--stripe:#c97bff">
+      <h3>BNKNetPolicy</h3>
+      <p>Attaches iRule or general network policy at the Gateway level or at an individual Listener. Enables custom traffic manipulation without modifying routes.</p>
+    </div>
+    <div class="card" style="--stripe:#c97bff">
+      <h3>iRule Manifest</h3>
+      <p>The TCL iRule definition (inline or via ConfigMap) referenced by a BNKNetPolicy. Contains the actual traffic logic — header rewrites, redirects, persistence, logging, etc.</p>
+    </div>
+    <div class="card" style="--stripe:#7fff6e">
+      <h3>F5BigFwPolicy</h3>
+      <p>Declares firewall rules (ACLs, zone policies). Applied to the Gateway so all traffic passing through is inspected before reaching routes.</p>
+    </div>
+    <div class="card" style="--stripe:#7fff6e">
+      <h3>BNKSecPolicy</h3>
+      <p>Higher-level security wrapper that references an F5BigFwPolicy. Provides a Kubernetes-native way to compose and attach security posture to a Gateway.</p>
+    </div>
+    <div class="card" style="--stripe:#ff6b35">
+      <h3>F5SPKEgress</h3>
+      <p>Enables egress connectivity for internal pods that need access to external networks. Supports three SNAT modes: <strong>SNAT none</strong> (pod IP used), <strong>SNAT automap</strong> (TMM external VLAN self-IP, default), or <strong>SNAT pool</strong> (optionally references an F5SPKSnatpool CR). Must also reference an F5SPKDnscache CR for DNS caching. Applied to the namespace where the TMM pod is configured.</p>
+    </div>
+    <div class="card" style="--stripe:#ff6b35">
+      <h3>F5SPKSnatpool</h3>
+      <p>An optional pool of routable SNAT IP addresses used when F5SPKEgress is configured with <code>SRC_TRANS_SNATPOOL</code>. By default all IPs are advertised via BGP; use prefixList and routeMaps to restrict advertisement. Supports shared SNAT address mode for large-scale deployments where multiple TMM pods share the same SNAT addresses.</p>
+    </div>
+    <div class="card" style="--stripe:#00e5cc">
+      <h3>Prometheus</h3>
+      <p>Scrapes real-time inference metrics (GPU utilization, queue depth, token throughput) from LLM backends such as NVIDIA NIM and vLLM. Feeds the f5-analyzer pod with the data it needs to make routing decisions.</p>
+    </div>
+    <div class="card" style="--stripe:#00e5cc">
+      <h3>f5-analyzer</h3>
+      <p>An optional BNK pod enabled via CNEInstance (intelligentLB: true). Defined by the <strong>F5BigAnalyzer CR</strong>, it attaches to one or more <strong>HTTPRoute or L4Route</strong> resources via the <code>applications</code> field. Queries Prometheus metrics and runs a script (built-in <em>LLMLoadMonitor</em> or custom) on a schedule to dynamically adjust route weights for intelligent LLM load balancing. Primarily for DPU installations.</p>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
