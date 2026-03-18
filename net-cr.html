@@ -1,0 +1,1167 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPK / BIG-IP Next for Kubernetes — Traffic Flow Architecture</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap');
+
+:root {
+–bg: #0a0e1a;
+–surface: #0f1628;
+–surface2: #141d35;
+–border: #1e2d50;
+–border-bright: #2a4080;
+–text: #c8d8f0;
+–text-dim: #6a82a8;
+–text-bright: #e8f0ff;
+
+```
+--blue: #2a7fff;
+--blue-dim: #1a4f99;
+--blue-glow: rgba(42,127,255,0.25);
+--cyan: #00d4ff;
+--cyan-dim: #006880;
+--green: #00e5a0;
+--green-dim: #00704e;
+--orange: #ff9030;
+--orange-dim: #7a4010;
+--red: #ff4060;
+--red-dim: #7a1020;
+--purple: #a060ff;
+--purple-dim: #4a2080;
+--yellow: #ffd040;
+
+--ingress-color: #2a7fff;
+--egress-color: #ff9030;
+--internal-color: #00e5a0;
+--external-color: #00d4ff;
+--cr-color: #a060ff;
+--snat-color: #ff4060;
+```
+
+}
+
+- { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+background: var(–bg);
+color: var(–text);
+font-family: ‘IBM Plex Sans’, sans-serif;
+font-size: 13px;
+min-height: 100vh;
+}
+
+.page-header {
+background: linear-gradient(135deg, #0a0e1a 0%, #0d1830 100%);
+border-bottom: 1px solid var(–border-bright);
+padding: 20px 32px 16px;
+position: relative;
+overflow: hidden;
+}
+.page-header::before {
+content: ‘’;
+position: absolute; inset: 0;
+background: repeating-linear-gradient(90deg, transparent, transparent 80px, rgba(42,127,255,0.03) 80px, rgba(42,127,255,0.03) 81px);
+}
+.header-top { display: flex; align-items: flex-start; gap: 16px; position: relative; }
+.f5-badge {
+background: var(–red);
+color: white;
+font-family: ‘IBM Plex Mono’, monospace;
+font-weight: 700;
+font-size: 18px;
+padding: 4px 10px;
+letter-spacing: 1px;
+flex-shrink: 0;
+margin-top: 2px;
+}
+.header-text h1 {
+font-size: 20px;
+font-weight: 700;
+color: var(–text-bright);
+letter-spacing: 0.3px;
+}
+.header-text .subtitle {
+font-size: 12px;
+color: var(–text-dim);
+font-family: ‘IBM Plex Mono’, monospace;
+margin-top: 3px;
+}
+.legend-strip {
+display: flex; gap: 20px; flex-wrap: wrap;
+margin-top: 14px; padding-top: 12px;
+border-top: 1px solid var(–border);
+position: relative;
+}
+.leg-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(–text-dim); }
+.leg-line { width: 28px; height: 2px; flex-shrink: 0; }
+.leg-line.ingress { background: var(–ingress-color); }
+.leg-line.egress { background: var(–egress-color); }
+.leg-line.ctrl { background: var(–cr-color); border-top: 2px dashed var(–cr-color); height: 0; }
+.leg-line.grpc { background: var(–green); border-top: 2px dotted var(–green); height: 0; }
+.leg-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+.canvas {
+padding: 24px 28px;
+display: flex;
+flex-direction: column;
+gap: 0;
+}
+
+/* ── MAIN GRID ── */
+.main-grid {
+display: grid;
+grid-template-columns: 160px 1fr 200px;
+grid-template-rows: auto auto auto;
+gap: 16px;
+align-items: start;
+}
+
+/* ── ZONE CONTAINERS ── */
+.zone {
+border: 1px solid var(–border);
+border-radius: 6px;
+position: relative;
+}
+.zone-label {
+position: absolute;
+top: -10px; left: 12px;
+background: var(–bg);
+padding: 0 6px;
+font-family: ‘IBM Plex Mono’, monospace;
+font-size: 10px;
+font-weight: 700;
+letter-spacing: 1px;
+text-transform: uppercase;
+}
+.zone-inner { padding: 18px 14px 14px; }
+
+/* Colored zones */
+.zone.external { border-color: var(–cyan-dim); }
+.zone.external .zone-label { color: var(–cyan); }
+.zone.k8s { border-color: var(–blue-dim); }
+.zone.k8s .zone-label { color: var(–blue); }
+.zone.tmm-zone { border-color: var(–green-dim); }
+.zone.tmm-zone .zone-label { color: var(–green); }
+.zone.cr-zone { border-color: var(–purple-dim); }
+.zone.cr-zone .zone-label { color: var(–purple); }
+.zone.ctrl-zone { border-color: rgba(160,96,255,0.3); }
+.zone.ctrl-zone .zone-label { color: var(–purple); }
+
+/* ── BOXES ── */
+.box {
+border-radius: 4px;
+padding: 8px 10px;
+position: relative;
+}
+.box-title {
+font-family: ‘IBM Plex Mono’, monospace;
+font-size: 11px;
+font-weight: 700;
+letter-spacing: 0.5px;
+margin-bottom: 3px;
+}
+.box-sub {
+font-size: 10px;
+color: var(–text-dim);
+line-height: 1.4;
+}
+.box-tag {
+display: inline-block;
+font-family: ‘IBM Plex Mono’, monospace;
+font-size: 9px;
+padding: 1px 5px;
+border-radius: 2px;
+margin-top: 4px;
+}
+
+/* Box color variants */
+.box.blue { background: rgba(42,127,255,0.1); border: 1px solid var(–blue-dim); }
+.box.blue .box-title { color: var(–blue); }
+.box.blue .box-tag { background: rgba(42,127,255,0.2); color: var(–blue); }
+
+.box.cyan { background: rgba(0,212,255,0.07); border: 1px solid var(–cyan-dim); }
+.box.cyan .box-title { color: var(–cyan); }
+.box.cyan .box-tag { background: rgba(0,212,255,0.15); color: var(–cyan); }
+
+.box.green { background: rgba(0,229,160,0.08); border: 1px solid var(–green-dim); }
+.box.green .box-title { color: var(–green); }
+.box.green .box-tag { background: rgba(0,229,160,0.15); color: var(–green); }
+
+.box.orange { background: rgba(255,144,48,0.08); border: 1px solid var(–orange-dim); }
+.box.orange .box-title { color: var(–orange); }
+.box.orange .box-tag { background: rgba(255,144,48,0.15); color: var(–orange); }
+
+.box.red { background: rgba(255,64,96,0.08); border: 1px solid var(–red-dim); }
+.box.red .box-title { color: var(–red); }
+.box.red .box-tag { background: rgba(255,64,96,0.15); color: var(–red); }
+
+.box.purple { background: rgba(160,96,255,0.08); border: 1px solid var(–purple-dim); }
+.box.purple .box-title { color: var(–purple); }
+.box.purple .box-tag { background: rgba(160,96,255,0.15); color: var(–purple); }
+
+.box.yellow { background: rgba(255,208,64,0.06); border: 1px solid rgba(255,208,64,0.3); }
+.box.yellow .box-title { color: var(–yellow); }
+
+.box.dark { background: var(–surface2); border: 1px solid var(–border); }
+.box.dark .box-title { color: var(–text); }
+
+/* ── STACKS ── */
+.vstack { display: flex; flex-direction: column; gap: 8px; }
+.hstack { display: flex; gap: 8px; align-items: stretch; }
+
+/* ── FLOW ARROWS (SVG) ── */
+.flow-diagram {
+position: relative;
+overflow: visible;
+}
+
+/* ── SECTION DIVIDERS ── */
+.section-row {
+display: flex;
+align-items: center;
+gap: 10px;
+margin: 8px 0 4px;
+}
+.section-row-label {
+font-family: ‘IBM Plex Mono’, monospace;
+font-size: 10px;
+font-weight: 700;
+color: var(–text-dim);
+letter-spacing: 1.5px;
+text-transform: uppercase;
+white-space: nowrap;
+}
+.section-row-line { flex: 1; height: 1px; background: var(–border); }
+
+/* ── FLOW ARROWS ── */
+.arrow-row {
+display: flex;
+align-items: center;
+gap: 0;
+padding: 0 4px;
+height: 28px;
+position: relative;
+}
+.arrow-label {
+font-size: 9px;
+font-family: ‘IBM Plex Mono’, monospace;
+color: var(–text-dim);
+background: var(–bg);
+padding: 1px 4px;
+border-radius: 2px;
+white-space: nowrap;
+z-index: 1;
+}
+
+/* ── MAIN FLOW DIAGRAM ── */
+.flow-main {
+display: flex;
+flex-direction: column;
+gap: 0;
+}
+
+/* FULL LAYOUT */
+.layout {
+display: grid;
+grid-template-columns: 170px 40px 1fr 40px 180px;
+grid-template-rows: auto;
+gap: 0;
+align-items: start;
+}
+
+.col-external { grid-column: 1; }
+.col-arr1 { grid-column: 2; display: flex; align-items: center; justify-content: center; }
+.col-tmm { grid-column: 3; }
+.col-arr2 { grid-column: 4; display: flex; align-items: center; justify-content: center; }
+.col-pods { grid-column: 5; }
+
+/* ARROW SVGs inline */
+svg.arr { overflow: visible; }
+
+/* ── TMM INTERNALS ── */
+.tmm-internals {
+display: grid;
+grid-template-columns: 1fr 1fr 1fr;
+gap: 8px;
+}
+
+/* ── CR PANEL ── */
+.cr-panel {
+display: grid;
+grid-template-columns: 1fr 1fr;
+gap: 8px;
+}
+
+/* ── PARAM TABLE ── */
+.param-table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+.param-table td {
+padding: 2px 4px;
+font-family: ‘IBM Plex Mono’, monospace;
+font-size: 9px;
+border-bottom: 1px solid rgba(255,255,255,0.04);
+vertical-align: top;
+}
+.param-table td:first-child { color: var(–text-dim); width: 42%; }
+.param-table td:last-child { color: var(–text-bright); }
+
+/* ── SEPARATOR ── */
+hr.divider { border: none; border-top: 1px solid var(–border); margin: 16px 0; }
+
+/* ── FLOW SEQUENCE SECTION ── */
+.flow-seq {
+display: flex;
+gap: 0;
+align-items: stretch;
+margin-top: 16px;
+}
+.seq-step {
+flex: 1;
+background: var(–surface);
+border: 1px solid var(–border);
+border-radius: 4px;
+padding: 10px;
+position: relative;
+}
+.seq-step::after {
+content: ‘→’;
+position: absolute;
+right: -14px;
+top: 50%;
+transform: translateY(-50%);
+font-size: 16px;
+color: var(–border-bright);
+z-index: 2;
+}
+.seq-step:last-child::after { display: none; }
+.seq-num {
+font-family: ‘IBM Plex Mono’, monospace;
+font-size: 9px;
+font-weight: 700;
+color: var(–text-dim);
+margin-bottom: 4px;
+}
+.seq-title {
+font-family: ‘IBM Plex Mono’, monospace;
+font-size: 10px;
+font-weight: 700;
+color: var(–text-bright);
+margin-bottom: 3px;
+}
+.seq-body { font-size: 10px; color: var(–text-dim); line-height: 1.4; }
+.seq-step.step-ingress { border-color: rgba(42,127,255,0.4); }
+.seq-step.step-egress { border-color: rgba(255,144,48,0.4); }
+
+.seq-gap { width: 16px; flex-shrink: 0; }
+
+/* Badges inline */
+.badge {
+display: inline-block;
+font-family: ‘IBM Plex Mono’, monospace;
+font-size: 9px;
+padding: 1px 5px;
+border-radius: 2px;
+vertical-align: middle;
+margin: 1px 2px;
+}
+.badge.ing { background: rgba(42,127,255,0.2); color: var(–blue); }
+.badge.egr { background: rgba(255,144,48,0.2); color: var(–orange); }
+.badge.cr { background: rgba(160,96,255,0.2); color: var(–purple); }
+.badge.net { background: rgba(0,229,160,0.2); color: var(–green); }
+
+/* ─ FULL PAGE LAYOUT ─ */
+.page-body {
+display: grid;
+grid-template-columns: 1fr 300px;
+gap: 16px;
+padding: 24px 28px;
+align-items: start;
+}
+
+.right-panel { display: flex; flex-direction: column; gap: 12px; }
+
+/* scrollable whole page */
+html { overflow-x: auto; }
+
+/* ─ CONNECTORS (pure CSS) ─ */
+.connector {
+display: flex;
+align-items: center;
+justify-content: center;
+position: relative;
+height: 100%;
+min-height: 60px;
+}
+.conn-line {
+position: absolute;
+background: var(–border-bright);
+}
+.conn-line.h { height: 2px; width: 100%; top: 50%; }
+.conn-line.ingress-c { background: var(–blue); }
+.conn-line.egress-c { background: var(–orange); }
+
+/* ─ TOP ARCHITECTURE STRIP ─ */
+.arch-strip {
+background: linear-gradient(90deg, rgba(0,212,255,0.05), rgba(42,127,255,0.05), rgba(0,229,160,0.05));
+border: 1px solid var(–border);
+border-radius: 6px;
+padding: 12px 16px;
+display: flex;
+align-items: center;
+gap: 0;
+margin-bottom: 0;
+overflow: hidden;
+position: relative;
+}
+.arch-strip::before {
+content: ‘’;
+position: absolute; inset: 0;
+background: repeating-linear-gradient(0deg, transparent, transparent 20px, rgba(255,255,255,0.015) 20px, rgba(255,255,255,0.015) 21px);
+}
+
+.arch-node {
+position: relative;
+z-index: 1;
+text-align: center;
+flex: 1;
+}
+.arch-node-box {
+border-radius: 4px;
+padding: 6px 8px;
+display: inline-flex;
+flex-direction: column;
+align-items: center;
+min-width: 90px;
+}
+.arch-node-icon { font-size: 16px; margin-bottom: 2px; }
+.arch-node-name {
+font-family: ‘IBM Plex Mono’, monospace;
+font-size: 10px;
+font-weight: 700;
+}
+.arch-node-sub { font-size: 9px; color: var(–text-dim); margin-top: 1px; }
+
+.arch-arrow {
+flex-shrink: 0;
+display: flex;
+flex-direction: column;
+align-items: center;
+gap: 2px;
+padding: 0 4px;
+z-index: 1;
+position: relative;
+}
+.arch-arr-line {
+width: 100%;
+height: 1px;
+min-width: 20px;
+}
+.arch-arr-label { font-size: 8px; font-family: ‘IBM Plex Mono’, monospace; color: var(–text-dim); white-space: nowrap; }
+
+/* ── TROUBLESHOOT PANEL ── */
+.ts-item {
+display: flex;
+gap: 8px;
+padding: 6px 8px;
+background: var(–surface);
+border-radius: 3px;
+border-left: 2px solid var(–border-bright);
+margin-bottom: 4px;
+}
+.ts-item .ts-cmd {
+font-family: ‘IBM Plex Mono’, monospace;
+font-size: 9px;
+color: var(–green);
+flex-shrink: 0;
+}
+.ts-item .ts-desc { font-size: 10px; color: var(–text-dim); }
+
+/* ── SMALL CR BADGE ── */
+.cr-badge {
+font-family: ‘IBM Plex Mono’, monospace;
+font-size: 9px;
+background: rgba(160,96,255,0.1);
+color: var(–purple);
+border: 1px solid rgba(160,96,255,0.3);
+border-radius: 2px;
+padding: 1px 4px;
+display: inline-block;
+margin: 1px 1px;
+}
+
+.note {
+background: rgba(255,208,64,0.06);
+border: 1px solid rgba(255,208,64,0.2);
+border-radius: 3px;
+padding: 6px 9px;
+font-size: 10px;
+color: rgba(255,208,64,0.8);
+margin-top: 6px;
+}
+.note strong { color: var(–yellow); }
+
+/* ── STEP CONNECTOR VISUAL ── */
+.big-flow {
+display: grid;
+grid-template-columns: repeat(7, 1fr);
+gap: 0;
+align-items: center;
+padding: 12px 0;
+}
+.bf-node {
+background: var(–surface);
+border-radius: 4px;
+padding: 8px 6px;
+text-align: center;
+position: relative;
+}
+.bf-node-title {
+font-family: ‘IBM Plex Mono’, monospace;
+font-size: 9px;
+font-weight: 700;
+margin-bottom: 2px;
+}
+.bf-node-sub { font-size: 8px; color: var(–text-dim); line-height: 1.3; }
+.bf-arrow {
+display: flex;
+align-items: center;
+justify-content: center;
+flex-direction: column;
+gap: 1px;
+}
+.bf-arr-line {
+width: 100%;
+height: 2px;
+}
+.bf-arr-text { font-size: 8px; color: var(–text-dim); font-family: ‘IBM Plex Mono’, monospace; }
+
+/* egress flow */
+.egress-flow {
+display: grid;
+grid-template-columns: repeat(7, 1fr);
+gap: 0;
+align-items: center;
+padding: 12px 0;
+}
+</style>
+
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════
+     PAGE HEADER
+══════════════════════════════════════════ -->
+
+<div class="page-header">
+  <div class="header-top">
+    <div class="f5-badge">F5</div>
+    <div class="header-text">
+      <h1>BIG-IP Next for Kubernetes (SPK) — Traffic Flow &amp; CR Architecture</h1>
+      <div class="subtitle">Multus · SR-IOV · F5SPKVlan · F5SPKEgress · F5SPKSnatpool · F5SPKStaticRoute · TMM · OVN-Kubernetes</div>
+    </div>
+  </div>
+  <div class="legend-strip">
+    <div class="leg-item"><div class="leg-line ingress"></div> Ingress Traffic Path</div>
+    <div class="leg-item"><div class="leg-line egress"></div> Egress Traffic Path</div>
+    <div class="leg-item"><div class="leg-line ctrl"></div> CR/Control Plane</div>
+    <div class="leg-item"><div class="leg-line grpc"></div> gRPC Config Push</div>
+    <div class="leg-item"><div class="leg-dot" style="background:var(--blue)"></div> External VLAN</div>
+    <div class="leg-item"><div class="leg-dot" style="background:var(--green)"></div> Internal VLAN</div>
+    <div class="leg-item"><div class="leg-dot" style="background:var(--orange)"></div> SNAT Pool</div>
+    <div class="leg-item"><div class="leg-dot" style="background:var(--purple)"></div> Custom Resource</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MAIN BODY
+══════════════════════════════════════════ -->
+
+<div class="page-body">
+
+  <!-- LEFT: Main Diagram -->
+
+  <div>
+
+```
+<!-- ── SECTION 1: HIGH-LEVEL ARCHITECTURE ── -->
+<div class="section-row">
+  <div class="section-row-label">01 — System Architecture Overview</div>
+  <div class="section-row-line"></div>
+</div>
+
+<div class="arch-strip">
+
+  <!-- External Client -->
+  <div class="arch-node">
+    <div class="arch-node-box" style="background:rgba(0,212,255,0.1); border:1px solid var(--cyan-dim)">
+      <div class="arch-node-icon">🌐</div>
+      <div class="arch-node-name" style="color:var(--cyan)">EXTERNAL<br>CLIENT / UE</div>
+      <div class="arch-node-sub">Internet / RAN</div>
+    </div>
+  </div>
+
+  <!-- Arrow: ToR BGP -->
+  <div class="arch-arrow" style="width:60px">
+    <div class="arch-arr-line" style="background:var(--cyan)"></div>
+    <div class="arch-arr-label">ToR/BGP<br>VIP Route</div>
+  </div>
+
+  <!-- Physical NIC / SR-IOV PF -->
+  <div class="arch-node">
+    <div class="arch-node-box" style="background:rgba(0,212,255,0.07); border:1px solid var(--cyan-dim)">
+      <div class="arch-node-icon">⚡</div>
+      <div class="arch-node-name" style="color:var(--cyan)">SR-IOV PF<br>Bare-Metal NIC</div>
+      <div class="arch-node-sub">Physical Function<br>Network Node Policy</div>
+    </div>
+  </div>
+
+  <!-- Arrow: VF injection -->
+  <div class="arch-arrow" style="width:60px">
+    <div class="arch-arr-line" style="background:var(--blue)"></div>
+    <div class="arch-arr-label">VF inject<br>via Multus</div>
+  </div>
+
+  <!-- TMM Pod -->
+  <div class="arch-node">
+    <div class="arch-node-box" style="background:rgba(0,229,160,0.1); border:1px solid var(--green-dim); min-width:110px">
+      <div class="arch-node-icon">🔀</div>
+      <div class="arch-node-name" style="color:var(--green)">f5-tmm Pod<br>(TMM)</div>
+      <div class="arch-node-sub">ext VLAN · int VLAN<br>VS · Pool · SNAT</div>
+    </div>
+  </div>
+
+  <!-- Arrow: OVN / internal -->
+  <div class="arch-arrow" style="width:60px">
+    <div class="arch-arr-line" style="background:var(--green)"></div>
+    <div class="arch-arr-label">OVN egress-gw<br>internal VLAN</div>
+  </div>
+
+  <!-- K8s Worker Node / Pods -->
+  <div class="arch-node">
+    <div class="arch-node-box" style="background:rgba(42,127,255,0.1); border:1px solid var(--blue-dim)">
+      <div class="arch-node-icon">📦</div>
+      <div class="arch-node-name" style="color:var(--blue)">5G App Pods</div>
+      <div class="arch-node-sub">K8s Svc Endpoints<br>LB Pool Members</div>
+    </div>
+  </div>
+
+  <!-- Arrow: External services -->
+  <div class="arch-arrow" style="width:60px">
+    <div class="arch-arr-line" style="background:var(--orange)"></div>
+    <div class="arch-arr-label">Egress SNAT<br>/ DNS NAT46</div>
+  </div>
+
+  <!-- External Services -->
+  <div class="arch-node">
+    <div class="arch-node-box" style="background:rgba(255,144,48,0.08); border:1px solid var(--orange-dim)">
+      <div class="arch-node-icon">☁️</div>
+      <div class="arch-node-name" style="color:var(--orange)">EXTERNAL<br>SERVICES</div>
+      <div class="arch-node-sub">IPv4 / IPv6<br>DNS Servers</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── SECTION 2: MULTUS / VLAN LAYER ── -->
+<hr class="divider">
+<div class="section-row">
+  <div class="section-row-label">02 — Multus CNI &amp; SR-IOV → F5SPKVlan Binding</div>
+  <div class="section-row-line"></div>
+</div>
+
+<div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+
+  <!-- LEFT: Multus / SR-IOV -->
+  <div class="zone external">
+    <div class="zone-label">OpenShift / Kubernetes Node Layer</div>
+    <div class="zone-inner">
+      <div class="vstack">
+
+        <div class="box cyan">
+          <div class="box-title">SriovNetworkNodePolicy</div>
+          <div class="box-sub">Defines Physical Functions (PFs) on bare-metal NICs. Segments PFs into Virtual Functions (VFs) for container injection.</div>
+          <table class="param-table">
+            <tr><td>resourceName</td><td>e.g. <code>net_sriov_ext</code></td></tr>
+            <tr><td>numVfs</td><td>Number of VFs per PF</td></tr>
+            <tr><td>nicSelector</td><td>PCI addr / ifname</td></tr>
+          </table>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:8px; padding: 0 8px;">
+          <div style="flex:1; height:1px; background: linear-gradient(90deg, var(--cyan-dim), var(--blue-dim));"></div>
+          <span style="font-size:9px; color:var(--text-dim); font-family:'IBM Plex Mono',monospace;">references by resourceName ↓</span>
+          <div style="flex:1; height:1px; background: linear-gradient(90deg, var(--blue-dim), var(--cyan-dim));"></div>
+        </div>
+
+        <div class="box blue">
+          <div class="box-title">NetworkAttachmentDefinition</div>
+          <div class="box-sub">Multus CNI config referencing the SR-IOV node policy resource. Defines the network attachment that is injected into the TMM Pod.</div>
+          <table class="param-table">
+            <tr><td>type</td><td>sriov</td></tr>
+            <tr><td>resourceName</td><td>→ SriovNetworkNodePolicy</td></tr>
+            <tr><td>vlan</td><td>⚠ Do NOT set — use F5SPKVlan <code>tag</code> instead</td></tr>
+          </table>
+          <div class="note" style="margin-top:5px"><strong>⚠ Critical:</strong> Never set the VLAN tag in the NetworkAttachmentDefinition. VLAN tagging is exclusively handled by the <code>F5SPKVlan</code> CR's <code>spec.tag</code> parameter.</div>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:8px; padding: 0 8px;">
+          <div style="flex:1; height:1px; background: linear-gradient(90deg, var(--blue-dim), var(--green-dim));"></div>
+          <span style="font-size:9px; color:var(--text-dim); font-family:'IBM Plex Mono',monospace;">VF injected into Pod via Multus ↓</span>
+          <div style="flex:1; height:1px; background: linear-gradient(90deg, var(--green-dim), var(--blue-dim));"></div>
+        </div>
+
+        <div class="box dark" style="background:rgba(0,229,160,0.05); border-color:var(--green-dim)">
+          <div class="box-title" style="color:var(--green)">SPK Helm: cniNetworks + OPENSHIFT_VFIO_RESOURCE</div>
+          <div class="box-sub">References NetworkAttachmentDefinitions and orders TMM interface list. Must align 1-to-1 with VFIO resources.</div>
+          <table class="param-table">
+            <tr><td>cniNetworks</td><td>net-attach-def names (in order)</td></tr>
+            <tr><td>VFIO_RESOURCE</td><td>SR-IOV resourceName list (same order)</td></tr>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: F5SPKVlan CRs -->
+  <div class="zone tmm-zone">
+    <div class="zone-label">F5SPKVlan Custom Resources → TMM Interfaces</div>
+    <div class="zone-inner">
+      <div class="vstack">
+
+        <div class="box cyan">
+          <div class="box-title">F5SPKVlan — External (Clientside)</div>
+          <div class="box-sub">Configures TMM's external-facing interface. Receives ingress traffic from the network. VLAN tag, Self IPs, MTU, bonding, auto-lasthop.</div>
+          <table class="param-table">
+            <tr><td>spec.tag</td><td>VLAN ID (e.g. 3805)</td></tr>
+            <tr><td>spec.interfaces</td><td>["1.1","1.2"] — SR-IOV VFs</td></tr>
+            <tr><td>spec.selfip_v4s</td><td>Per-replica self IPs (clientside)</td></tr>
+            <tr><td>spec.prefixlen_v4</td><td>Subnet mask</td></tr>
+            <tr><td>spec.bonded</td><td>true = LACP bond across interfaces</td></tr>
+            <tr><td>spec.category</td><td>e.g. "clientside" (for VS filtering)</td></tr>
+            <tr><td>auto_lasthop</td><td>ENABLED — return to src MAC</td></tr>
+            <tr><td>spec.internal</td><td>false (external VLAN)</td></tr>
+          </table>
+          <div class="box-tag">kind: F5SPKVlan</div>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:6px; padding: 2px 6px;">
+          <div style="width:8px; height:8px; background:var(--green); border-radius:1px; flex-shrink:0;"></div>
+          <div style="font-size:9px; color:var(--text-dim); font-family:'IBM Plex Mono',monospace;">spec.internal: true → OVN annotations applied to TMM Pod</div>
+        </div>
+
+        <div class="box green">
+          <div class="box-title">F5SPKVlan — Internal (Serverside)</div>
+          <div class="box-sub">Configures TMM's internal-facing interface. Connects to K8s node subnet. OVN uses this interface as the egress default gateway for Pods.</div>
+          <table class="param-table">
+            <tr><td>spec.tag</td><td>VLAN ID (internal network)</td></tr>
+            <tr><td>spec.interfaces</td><td>["1.3","1.4"] — SR-IOV VFs</td></tr>
+            <tr><td>spec.selfip_v4s</td><td>Must share subnet with OVN nodes</td></tr>
+            <tr><td>spec.internal</td><td><strong>true</strong> — applies OVN routing annotations</td></tr>
+            <tr><td>auto_lasthop</td><td>DISABLED</td></tr>
+          </table>
+          <div class="note"><strong>OVN Annotations Set:</strong><br>
+            <code style="font-size:9px">k8s.ovn.org/routing-namespaces</code> → watchNamespace<br>
+            <code style="font-size:9px">k8s.ovn.org/routing-network</code> → internal VLAN iface
+          </div>
+          <div class="box-tag">kind: F5SPKVlan  spec.internal: true</div>
+        </div>
+
+        <div class="note">
+          <strong>Scaling TMM:</strong> Each TMM replica gets the next IP from <code>selfip_v4s[]</code>. OVN creates ECMP routes across all replicas. SNAT pool assigns per-replica IP lists in the same order.
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</div><!-- end grid -->
+
+<!-- ── SECTION 3: INGRESS TRAFFIC FLOW ── -->
+<hr class="divider">
+<div class="section-row">
+  <div class="section-row-label">03 — Ingress Traffic Flow (External → Pod)</div>
+  <div class="section-row-line"></div>
+</div>
+
+<!-- Ingress Step Flow -->
+<div style="display:grid; grid-template-columns: repeat(6,1fr) ; gap:0; align-items:center;">
+
+  <div class="bf-node" style="border:1px solid var(--cyan-dim); background:rgba(0,212,255,0.07)">
+    <div class="bf-node-title" style="color:var(--cyan)">① EXTERNAL CLIENT</div>
+    <div class="bf-node-sub">Sends packet to VIP (Virtual Server IP)</div>
+  </div>
+  <div class="bf-arrow">
+    <div class="bf-arr-line" style="background:var(--blue)"></div>
+    <div class="bf-arr-text">BGP-announced<br>VIP → ToR</div>
+  </div>
+  <div class="bf-node" style="border:1px solid var(--blue-dim); background:rgba(42,127,255,0.07)">
+    <div class="bf-node-title" style="color:var(--blue)">② SR-IOV VF<br>External VLAN</div>
+    <div class="bf-node-sub">Packet arrives on external VLAN self IP. F5SPKVlan (external) maps interface.</div>
+  </div>
+  <div class="bf-arrow">
+    <div class="bf-arr-line" style="background:var(--blue)"></div>
+    <div class="bf-arr-text">TMM Virtual<br>Server match</div>
+  </div>
+  <div class="bf-node" style="border:1px solid var(--green-dim); background:rgba(0,229,160,0.07)">
+    <div class="bf-node-title" style="color:var(--green)">③ TMM<br>Virtual Server</div>
+    <div class="bf-node-sub">TCP/UDP/SCTP VS receives packet. Protocol Profile applied. LB pool selected.</div>
+  </div>
+  <div class="bf-arrow">
+    <div class="bf-arr-line" style="background:var(--green)"></div>
+    <div class="bf-arr-text">Round-robin<br>Pool member</div>
+  </div>
+
+</div>
+<div style="display:grid; grid-template-columns: repeat(4,1fr); gap:0; align-items:center; margin-top:0;">
+
+  <div class="bf-node" style="border:1px solid var(--green-dim); background:rgba(0,229,160,0.07)">
+    <div class="bf-node-title" style="color:var(--green)">④ LB Pool → K8s Svc Endpoint</div>
+    <div class="bf-node-sub">TMM forwards to Pod IP:Port via internal VLAN. OVN routes using src-ip policy.</div>
+  </div>
+  <div class="bf-arrow">
+    <div class="bf-arr-line" style="background:var(--green)"></div>
+    <div class="bf-arr-text">internal VLAN<br>self IP → node</div>
+  </div>
+  <div class="bf-node" style="border:1px solid var(--blue-dim); background:rgba(42,127,255,0.07)">
+    <div class="bf-node-title" style="color:var(--blue)">⑤ App Pod</div>
+    <div class="bf-node-sub">Pod receives packet. Return traffic uses TMM as default gateway (OVN egress-gw).</div>
+  </div>
+  <div class="bf-arrow">
+    <div class="bf-arr-line" style="background:var(--blue)"></div>
+    <div class="bf-arr-text">Response via<br>TMM auto-lasthop</div>
+  </div>
+
+</div>
+
+<!-- ── SECTION 4: EGRESS TRAFFIC FLOW ── -->
+<hr class="divider">
+<div class="section-row">
+  <div class="section-row-label">04 — Egress Traffic Flow (Pod → External) with SNAT &amp; Routes</div>
+  <div class="section-row-line"></div>
+</div>
+
+<div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+
+  <div class="vstack">
+
+    <div class="box green">
+      <div class="box-title">① Pod Sends Egress Packet</div>
+      <div class="box-sub">Pod uses TMM's internal VLAN self IP as its default gateway (set by OVN annotation <code>k8s.ovn.org/routing-namespaces</code>). Packet is forwarded to TMM's internal SR-IOV interface.</div>
+    </div>
+
+    <div class="box green" style="border-color:rgba(0,229,160,0.5)">
+      <div class="box-title">② TMM: Wildcard Virtual Server Match</div>
+      <div class="box-sub">F5SPKEgress CR creates a wildcard Virtual Server (0.0.0.0/0 for IPv4, ::/0 for IPv6). Packet matches the egress-ipv4 or egress-ipv6 virtual server.</div>
+      <table class="param-table">
+        <tr><td>VS Name</td><td>egress-ipv4 / egress-ipv6</td></tr>
+        <tr><td>dualStackEnabled</td><td>creates both VS if true</td></tr>
+      </table>
+    </div>
+
+    <div class="box orange">
+      <div class="box-title">③ SNAT: Source IP Translation</div>
+      <div class="box-sub">TMM translates the Pod's cluster IP to a routable SNAT address. Uses either SNAT pool or SNAT automap.</div>
+      <table class="param-table">
+        <tr><td>SNAT Automap</td><td>Uses external VLAN self IP. <code>egressSnatpool</code> left empty.</td></tr>
+        <tr><td>SNAT Pool</td><td>F5SPKSnatpool CR supplies per-replica IP list. Referenced by <code>spec.egressSnatpool</code>.</td></tr>
+      </table>
+      <div class="note"><strong>SNAT Pool Scaling:</strong> First address list → TMM replica 1, second list → replica 2, etc. SNAT IPs are advertised to BGP unless filtered by prefixList/routeMap.</div>
+    </div>
+
+    <div class="box blue">
+      <div class="box-title">④ Static Route: External Gateway</div>
+      <div class="box-sub">F5SPKStaticRoute CR programs TMM's routing table to forward egress packets to the correct upstream gateway. Without a route, TMM cannot deliver to external destinations.</div>
+      <table class="param-table">
+        <tr><td>destination</td><td>Target subnet or host IP</td></tr>
+        <tr><td>gateway</td><td>Upstream router IP on ext VLAN</td></tr>
+        <tr><td>interface</td><td>external VLAN interface</td></tr>
+        <tr><td>type</td><td>gateway (default)</td></tr>
+      </table>
+      <div class="box-tag">kind: F5SPKStaticRoute</div>
+    </div>
+
+    <div class="box cyan">
+      <div class="box-title">⑤ Packet Leaves via External VLAN</div>
+      <div class="box-sub">TMM forwards SNAT'd packet out the external VLAN SR-IOV interface. Source IP is now the SNAT pool address, routable from the external network.</div>
+    </div>
+
+  </div>
+
+  <!-- DNS/NAT46 Egress Path -->
+  <div class="vstack">
+    <div class="zone cr-zone" style="margin:0">
+      <div class="zone-label">DNS/NAT46 Egress Path (IPv4 Pod → IPv6 Host)</div>
+      <div class="zone-inner">
+        <div class="vstack">
+
+          <div class="box purple">
+            <div class="box-title">F5SPKDnscache CR</div>
+            <div class="box-sub">Configures TMM as a DNS caching resolver. Installed first — required by F5SPKEgress.</div>
+            <table class="param-table">
+              <tr><td>cacheType</td><td>net-resolver</td></tr>
+              <tr><td>forwardZones</td><td>domain → upstream DNS IP:port</td></tr>
+              <tr><td>nameServers.ipAddress</td><td>Must match dnsNat46PoolIps</td></tr>
+            </table>
+          </div>
+
+          <div class="box purple">
+            <div class="box-title">F5SPKEgress CR — DNS/NAT46 Mode</div>
+            <div class="box-sub">Enables IPv4-to-IPv6 translation flow:</div>
+            <table class="param-table">
+              <tr><td>dnsNat46Enabled</td><td>true</td></tr>
+              <tr><td>dnsNat46Ipv4Subnet</td><td>Private IPv4 pool for A-record NAT mappings</td></tr>
+              <tr><td>dnsNat46PoolIps</td><td>Upstream DNS server IP(s)</td></tr>
+              <tr><td>maxTmmReplicas</td><td>= number of selfip_v4s entries</td></tr>
+              <tr><td>maxReservedStaticIps</td><td>Reserve IPs for manual dSSM entries</td></tr>
+              <tr><td>egressSnatpool</td><td>IPv6 SNAT pool for outgoing traffic</td></tr>
+              <tr><td>dnsCacheName</td><td>namespace-name of F5SPKDnscache</td></tr>
+              <tr><td>nat64Enabled</td><td>true = DNS64/NAT64 support</td></tr>
+            </table>
+          </div>
+
+          <div class="box dark" style="border-color:rgba(160,96,255,0.3)">
+            <div class="box-title" style="color:var(--purple)">DNS/NAT46 Translation Logic</div>
+            <div class="box-sub" style="font-size:10px; line-height: 1.6;">
+              <span style="color:var(--green)">►</span> Pod DNS query → TMM intercepts<br>
+              <span style="color:var(--green)">►</span> DNS reply has only AAAA (IPv6) record?<br>
+              <span style="color:var(--green)">►</span> TMM creates IPv4 NAT entry in <strong>dSSM DB</strong><br>
+              <span style="color:var(--green)">►</span> Returns synthetic A record (from dnsNat46Ipv4Subnet)<br>
+              <span style="color:var(--green)">►</span> Pod connects to synthetic IPv4<br>
+              <span style="color:var(--green)">►</span> TMM translates → real IPv6 host using SNAT IPv6 pool<br>
+              <span style="color:var(--text-dim); font-size:9px">Counters: egress-dns-ipv4 (DNS reqs) | egress-ipv4-nat46 (mappings) | egress-ipv4 (connections)</span>
+            </div>
+          </div>
+
+          <div class="box dark" style="border-color:rgba(255,64,96,0.3)">
+            <div class="box-title" style="color:var(--red)">dSSM Database</div>
+            <div class="box-sub">Distributed session state manager. Stores DNS46 NAT mapping entries. Required for DNS/NAT46. Survives TMM restarts. Manual entries via <code>mrfdb</code> tool (use reserved IPs only).</div>
+            <table class="param-table">
+              <tr><td>Service</td><td>f5-dssm-sentinel</td></tr>
+              <tr><td>Port</td><td>26379/TCP (Sentinel)</td></tr>
+              <tr><td>Entry fmt</td><td>t_dns46&lt;IPv4&gt; → IPv6</td></tr>
+            </table>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── SECTION 5: CONTROL PLANE ── -->
+<hr class="divider">
+<div class="section-row">
+  <div class="section-row-label">05 — Control Plane: SPK Controller → TMM Configuration Push</div>
+  <div class="section-row-line"></div>
+</div>
+
+<div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+
+  <div class="box purple">
+    <div class="box-title">SPK Controller (spk-controller)</div>
+    <div class="box-sub">Watches all SPK CRDs in the cluster. Translates CRs into TMM configuration objects. Pushes config to TMM via gRPC. Manages Kubernetes Finalizers to ensure config cleanup on CR deletion.</div>
+    <table class="param-table">
+      <tr><td>watchNamespace</td><td>Project scope for OVN annotations</td></tr>
+      <tr><td>gRPC endpoint</td><td>→ f5-tmm container</td></tr>
+      <tr><td>Finalizer</td><td>CR not deleted until backend cleaned</td></tr>
+    </table>
+  </div>
+
+  <div class="box purple">
+    <div class="box-title">CR → TMM Object Mapping</div>
+    <div class="box-sub">Each CR type programs specific TMM objects:</div>
+    <table class="param-table">
+      <tr><td>F5SPKVlan</td><td>VLAN + Self IP + Interface</td></tr>
+      <tr><td>F5SPKStaticRoute</td><td>TMM route table entry</td></tr>
+      <tr><td>F5SPKEgress</td><td>Wildcard VS (egress-ipv4/v6)</td></tr>
+      <tr><td>F5SPKSnatpool</td><td>SNAT pool per-replica</td></tr>
+      <tr><td>F5SPKIngressTCP</td><td>TCP Virtual Server + Pool</td></tr>
+      <tr><td>F5SPKIngressUDP</td><td>UDP Virtual Server + Pool</td></tr>
+      <tr><td>F5SPKIngressNGAP</td><td>SCTP datagram LB VS</td></tr>
+      <tr><td>F5BigFwPolicy</td><td>Stateful ACL (Secure SPK)</td></tr>
+    </table>
+  </div>
+
+  <div class="vstack">
+    <div class="box green">
+      <div class="box-title">f5-tmm-routing (ZebOS/BGP)</div>
+      <div class="box-sub">Sidecar container in TMM Pod. Establishes BGP sessions with Top-of-Rack (ToR) switches. Advertises Virtual Server IPs and SNAT Pool IPs so external routers can reach them.</div>
+      <table class="param-table">
+        <tr><td>BGP peers</td><td>ToR switches</td></tr>
+        <tr><td>Advertises</td><td>VS IPs, SNAT pool IPs</td></tr>
+        <tr><td>Filter</td><td>prefixList / routeMap in Helm</td></tr>
+      </table>
+    </div>
+    <div class="box dark">
+      <div class="box-title" style="color:var(--yellow)">CR Install Order</div>
+      <div class="box-sub" style="font-size:10px; line-height:1.8">
+        <span style="color:var(--cyan)">1.</span> F5SPKVlan (ext + int)<br>
+        <span style="color:var(--blue)">2.</span> F5SPKStaticRoute<br>
+        <span style="color:var(--orange)">3.</span> F5SPKSnatpool (if using pools)<br>
+        <span style="color:var(--purple)">4.</span> F5SPKDnscache (if DNS/NAT46)<br>
+        <span style="color:var(--green)">5.</span> F5SPKEgress<br>
+        <span style="color:var(--blue)">6.</span> F5SPKIngressTCP/UDP/etc
+      </div>
+    </div>
+  </div>
+
+</div>
+```
+
+  </div><!-- end left col -->
+
+  <!-- RIGHT PANEL -->
+
+  <div class="right-panel">
+
+```
+<!-- CR Quick Reference -->
+<div class="zone cr-zone">
+  <div class="zone-label">CR Quick Reference</div>
+  <div class="zone-inner">
+    <div class="vstack">
+
+      <div>
+        <div style="font-size:10px; font-weight:700; color:var(--cyan); margin-bottom:4px; font-family:'IBM Plex Mono',monospace;">NETWORKING CRs</div>
+        <div class="cr-badge">F5SPKVlan</div>
+        <div class="cr-badge">F5SPKStaticRoute</div>
+        <div style="font-size:9px; color:var(--text-dim); margin-top:4px;">VLAN tags, self IPs, MTU, bonding, trunk hash, OVN annotations, allowed services per VLAN</div>
+      </div>
+
+      <div>
+        <div style="font-size:10px; font-weight:700; color:var(--orange); margin-bottom:4px; font-family:'IBM Plex Mono',monospace;">EGRESS CRs</div>
+        <div class="cr-badge">F5SPKEgress</div>
+        <div class="cr-badge">F5SPKSnatpool</div>
+        <div class="cr-badge">F5SPKDnscache</div>
+        <div style="font-size:9px; color:var(--text-dim); margin-top:4px;">Egress wildcard VS, SNAT automap or pool, DNS/NAT46 translation, IPv6 SNAT</div>
+      </div>
+
+      <div>
+        <div style="font-size:10px; font-weight:700; color:var(--blue); margin-bottom:4px; font-family:'IBM Plex Mono',monospace;">INGRESS TRAFFIC CRs</div>
+        <div class="cr-badge">F5SPKIngressTCP</div>
+        <div class="cr-badge">F5SPKIngressUDP</div>
+        <div class="cr-badge">F5SPKIngressGTP</div>
+        <div class="cr-badge">F5SPKIngressNGAP</div>
+        <div class="cr-badge">F5SPKIngressDiameter</div>
+        <div class="cr-badge">F5SPKIngressSip</div>
+        <div class="cr-badge">F5SPKIngressHTTP2</div>
+        <div class="cr-badge">F5SPKEgressSIP</div>
+        <div class="cr-badge">F5SPKEgressDiameter</div>
+        <div class="cr-badge">F5SPKEgressHTTP2</div>
+        <div class="cr-badge">F5SPKServiceTypeLBIpPool</div>
+        <div class="cr-badge">F5SPKIngressEgressUDP</div>
+        <div style="font-size:9px; color:var(--text-dim); margin-top:4px;">Create Virtual Server + Protocol Profile + LB Pool per application protocol</div>
+      </div>
+
+      <div>
+        <div style="font-size:10px; font-weight:700; color:var(--red); margin-bottom:4px; font-family:'IBM Plex Mono',monospace;">FIREWALL (SECURE SPK)</div>
+        <div class="cr-badge">F5BigFwPolicy</div>
+        <div class="cr-badge">F5BigContextGlobal</div>
+        <div class="cr-badge">F5BigLogProfile</div>
+        <div class="cr-badge">F5BigLogHslpub</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Troubleshooting Commands -->
+<div class="zone" style="border-color:rgba(0,229,160,0.3)">
+  <div class="zone-label" style="color:var(--green)">Troubleshooting Commands</div>
+  <div class="zone-inner">
+    <div style="font-size:10px; font-weight:700; color:var(--text-dim); margin-bottom:6px; font-family:'IBM Plex Mono',monospace;">CR STATUS</div>
+    <div class="ts-item">
+      <span class="ts-cmd">oc get f5-spk-vlan -n &lt;ns&gt;</span>
+    </div>
+    <div class="ts-item">
+      <span class="ts-cmd">oc get f5-spk-egress -n &lt;ns&gt;</span>
+    </div>
+    <div class="ts-item">
+      <span class="ts-cmd">oc get f5-spk-snatpool -n &lt;ns&gt;</span>
+    </div>
+    <div class="ts-item">
+      <span class="ts-cmd">oc get f5-spk-staticroute -n &lt;ns&gt;</span>
+    </div>
+
+    <div style="font-size:10px; font-weight:700; color:var(--text-dim); margin:8px 0 6px; font-family:'IBM Plex Mono',monospace;">TMM INTERNALS</div>
+    <div class="ts-item">
+      <span class="ts-cmd">oc exec -it deploy/f5-tmm -n &lt;ns&gt; -- bash</span>
+    </div>
+    <div class="ts-item">
+      <span class="ts-cmd">ip addr | grep -E 'internal|external'</span>
+    </div>
+    <div class="ts-item">
+      <span class="ts-cmd">ip route</span>
+    </div>
+
+    <div style="font-size:10px; font-weight:700; color:var(--text-dim); margin:8px 0 6px; font-family:'IBM Plex Mono',monospace;">TRAFFIC STATS (DEBUG SIDECAR)</div>
+    <div class="ts-item">
+      <span class="ts-cmd">tmctl -d blade virtual_server_stat -s name,clientside.tot_conns</span>
+    </div>
+
+    <div style="font-size:10px; font-weight:700; color:var(--text-dim); margin:8px 0 6px; font-family:'IBM Plex Mono',monospace;">OVN ROUTING</div>
+    <div class="ts-item">
+      <span class="ts-cmd">ovn-nbctl --no-leader-only find Logical_Router_Static_Route nexthop=&lt;TMM self IP&gt;</span>
+    </div>
+
+    <div style="font-size:10px; font-weight:700; color:var(--text-dim); margin:8px 0 6px; font-family:'IBM Plex Mono',monospace;">DNS46 dSSM</div>
+    <div class="ts-item">
+      <span class="ts-cmd">mrfdb -ipport=&lt;sentinel IP&gt;:26379 -serverName=server -type=dns46 -display=all</span>
+    </div>
+    <div class="ts-item">
+      <span class="ts-cmd">oc get svc f5-dssm-sentinel -n spk-utilities</span>
+    </div>
+
+    <div style="font-size:10px; font-weight:700; color:var(--text-dim); margin:8px 0 6px; font-family:'IBM Plex Mono',monospace;">SNAT POOL MAPPINGS</div>
+    <div class="ts-item">
+      <span class="ts-cmd">oc get cm | grep persistmap -n &lt;ns&gt;</span>
+    </div>
+    <div class="ts-item">
+      <span class="ts-cmd">oc get cm &lt;persistmap-name&gt; -o custom-columns=IP:.data.snatpoolMappings -n &lt;ns&gt;</span>
+    </div>
+
+  </div>
+</div>
+
+<!-- MTU Rules -->
+<div class="zone" style="border-color:rgba(255,208,64,0.25)">
+  <div class="zone-label" style="color:var(--yellow)">MTU Validation Rules</div>
+  <div class="zone-inner">
+    <table class="param-table" style="margin-top:0">
+      <tr><td>Min MTU</td><td style="color:var(--text-bright)">576 bytes</td></tr>
+      <tr><td>Max MTU</td><td style="color:var(--text-bright)">9198 bytes</td></tr>
+      <tr><td>Default</td><td style="color:var(--text-bright)">1500 bytes</td></tr>
+      <tr><td>spec.mtu</td><td style="color:var(--text-bright)">≤ global.tmmDefaultMTU</td></tr>
+      <tr><td>IPv6 VLAN</td><td style="color:var(--text-bright)">MTU ≥ 1280</td></tr>
+      <tr><td>⚠ Caution</td><td style="color:var(--orange)">Changing MTU on live VLAN disrupts traffic</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- Key Gotchas -->
+<div class="box red">
+  <div class="box-title">⚠ Critical Deployment Rules</div>
+  <div class="box-sub" style="font-size:10px; line-height:1.7;">
+    • Only <strong>one</strong> internal VLAN per Project (<code>spec.internal: true</code>)<br>
+    • VLAN tag in NetworkAttachmentDef must be <strong>unset</strong>; use CR <code>spec.tag</code> only<br>
+    • SNAT pool IPs across multiple SPK instances must <strong>not overlap</strong><br>
+    • DNS/NAT46 subnet (<code>dnsNat46Ipv4Subnet</code>) must remain <strong>unchanged</strong> for lifetime of install<br>
+    • Manual dSSM entries must use <strong>reserved IPs</strong> only (<code>maxReservedStaticIps</code>)<br>
+    • Always delete + reapply F5SPKEgress (not <code>oc apply</code> patch) when modifying<br>
+    • TMM replicas must equal number of selfip_v4s entries in VLANs<br>
+    • Install F5SPKDnscache <strong>before</strong> F5SPKEgress when using DNS/NAT46
+  </div>
+</div>
+```
+
+  </div><!-- end right panel -->
+
+</div><!-- end page-body -->
+
+</body>
+</html>
