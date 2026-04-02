@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BNK — Intelligent AI Load Balancing: Continuous Optimization Loop</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:      #080c14;
+  --grid:    rgba(0,200,255,.04);
+  --panel:   rgba(5,20,40,.88);
+  --border:  rgba(0,200,255,.18);
+  --accent:  #00c8ff;
+  --accent2: #ff6b35;
+  --accent3: #7fff6e;
+  --accent4: #c97bff;
+  --yellow:  #ffe066;
+  --teal:    #00e5cc;
+  --text:    #c8e8ff;
+  --muted:   #5a7a9a;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  font-family: 'Exo 2', sans-serif;
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.page {
+  position: relative; z-index: 1;
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 36px 20px 60px;
+}
+
+/* ── Header ── */
+header {
+  text-align: center;
+  margin-bottom: 36px;
+  animation: fadeDown .7s ease both;
+}
+header .eyebrow {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: .72rem;
+  letter-spacing: .25em;
+  color: var(--accent);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+header h1 {
+  font-size: clamp(1.4rem, 3.5vw, 2.2rem);
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--teal) 0%, #fff 50%, var(--accent) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1.2;
+}
+header .sub {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: .88rem;
+  font-weight: 300;
+}
+
+/* ── Status bar ── */
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  justify-content: center;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  animation: fadeDown .5s .1s ease both;
+}
+.status-pill {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: .72rem;
+  padding: 5px 14px;
+  border-radius: 20px;
+  border: 1px solid;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.status-pill .dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+.pill-running { border-color: rgba(0,229,204,.4); color: var(--teal); }
+.pill-running .dot { background: var(--teal); }
+.pill-req  { border-color: rgba(0,200,255,.3); color: var(--accent); }
+.pill-p99  { border-color: rgba(255,224,102,.3); color: var(--yellow); }
+.pill-gain { border-color: rgba(127,255,110,.3); color: var(--accent3); }
+
+/* ── Main diagram (SVG) ── */
+.loop-diagram {
+  width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 28px;
+  overflow: hidden;
+  animation: fadeUp .6s .2s ease both;
+}
+.loop-diagram svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+
+/* ── Flow path animations (stroke-dashoffset = flowing dots) ── */
+@keyframes flowFwd {
+  from { stroke-dashoffset: 22; }
+  to   { stroke-dashoffset: 0; }
+}
+@keyframes flowRev {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: 22; }
+}
+
+.flow-metrics   { animation: flowFwd 1.2s linear infinite; }
+.flow-weights   { animation: flowFwd 1.0s linear infinite; }
+.flow-config    { animation: flowFwd 0.9s linear infinite; }
+.flow-traffic-a { animation: flowFwd 1.5s linear infinite; }
+.flow-traffic-b { animation: flowFwd 1.8s linear infinite; }
+.flow-traffic-c { animation: flowFwd 2.4s linear infinite; }
+.flow-telemetry { animation: flowRev 2.8s linear infinite; }
+
+/* ── Metrics grid (3 backend cards) ── */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+  animation: fadeUp .6s .35s ease both;
+}
+
+.backend-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color .3s;
+}
+.backend-card.anomaly-active {
+  border-color: var(--accent2);
+  box-shadow: 0 0 20px -6px var(--accent2);
+}
+.backend-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--card-stripe, var(--accent));
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.card-name {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: .92rem;
+  font-weight: 600;
+  color: var(--card-stripe, var(--accent));
+}
+.card-weight {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--card-stripe, var(--accent));
+  text-shadow: 0 0 12px currentColor;
+}
+.weight-label {
+  font-size: .65rem;
+  color: var(--muted);
+  font-family: 'Share Tech Mono', monospace;
+  display: block;
+  text-align: right;
+  margin-top: -4px;
+}
+.metric-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.metric-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: .68rem;
+  color: var(--muted);
+  width: 80px;
+  flex-shrink: 0;
+}
+.metric-bar-wrap {
+  flex: 1;
+  height: 6px;
+  background: rgba(255,255,255,.06);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.metric-bar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width .8s cubic-bezier(.4,0,.2,1);
+}
+.metric-val {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: .68rem;
+  color: var(--text);
+  width: 42px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.bar-gpu     { background: linear-gradient(90deg, #00c8ff, #0080ff); }
+.bar-latency { background: linear-gradient(90deg, #ffe066, #ff9500); }
+.bar-queue   { background: linear-gradient(90deg, #c97bff, #7b2fff); }
+.bar-error   { background: linear-gradient(90deg, #ff6b35, #ff2020); }
+
+/* Weight bar (full width at bottom of card) */
+.weight-track {
+  margin-top: 10px;
+  height: 8px;
+  background: rgba(255,255,255,.06);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.weight-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--card-stripe, var(--accent));
+  transition: width .8s cubic-bezier(.4,0,.2,1);
+  box-shadow: 0 0 8px currentColor;
+}
+
+/* ── Bottom row: Controls + Event Log ── */
+.bottom-row {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 16px;
+  animation: fadeUp .6s .45s ease both;
+}
+
+.controls-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.controls-title {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: .72rem;
+  color: var(--muted);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.ctrl-btn {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: .78rem;
+  padding: 9px 12px;
+  border-radius: 7px;
+  border: 1px solid;
+  cursor: pointer;
+  transition: all .2s;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.btn-pause  { background: rgba(0,200,255,.08); border-color: rgba(0,200,255,.3); color: var(--accent); }
+.btn-pause:hover  { background: rgba(0,200,255,.18); border-color: var(--accent); }
+.btn-anomaly { background: rgba(255,107,53,.08); border-color: rgba(255,107,53,.3); color: var(--accent2); }
+.btn-anomaly:hover { background: rgba(255,107,53,.18); border-color: var(--accent2); }
+.btn-anomaly:disabled { opacity: .4; cursor: not-allowed; }
+.btn-reset  { background: rgba(127,255,110,.06); border-color: rgba(127,255,110,.2); color: var(--accent3); }
+.btn-reset:hover { background: rgba(127,255,110,.14); border-color: var(--accent3); }
+
+.speed-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+.speed-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: .68rem;
+  color: var(--muted);
+  flex: 1;
+}
+.speed-btn {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: .68rem;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all .15s;
+}
+.speed-btn.active, .speed-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Event log ── */
+.event-log {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+}
+.log-title {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: .72rem;
+  color: var(--muted);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+}
+.log-entries {
+  flex: 1;
+  height: 155px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 4px;
+}
+.log-entries::-webkit-scrollbar { width: 4px; }
+.log-entries::-webkit-scrollbar-track { background: transparent; }
+.log-entries::-webkit-scrollbar-thumb { background: rgba(0,200,255,.2); border-radius: 2px; }
+.log-entry {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: .7rem;
+  color: var(--muted);
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  animation: logIn .2s ease;
+}
+.log-entry.level-info  { color: var(--accent); }
+.log-entry.level-warn  { color: var(--yellow); }
+.log-entry.level-alert { color: var(--accent2); }
+.log-entry.level-ok    { color: var(--accent3); }
+.log-time { opacity: .5; flex-shrink: 0; }
+
+/* ── Animations ── */
+@keyframes fadeDown { from { opacity:0; transform:translateY(-16px); } to { opacity:1; transform:translateY(0); } }
+@keyframes fadeUp   { from { opacity:0; transform:translateY(16px);  } to { opacity:1; transform:translateY(0); } }
+@keyframes logIn    { from { opacity:0; transform:translateX(-6px);  } to { opacity:1; transform:translateX(0); } }
+@keyframes pulse    { 0%,100% { opacity:1; } 50% { opacity:.3; } }
+
+/* ── Responsive ── */
+@media (max-width: 700px) {
+  .metrics-grid    { grid-template-columns: 1fr; }
+  .bottom-row      { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+
+<body>
+<div class="page">
+
+<!-- ═══ HEADER ═══ -->
+<header>
+  <div class="eyebrow">F5 BIG-IP Next for Kubernetes · DPU-Accelerated</div>
+  <h1>Intelligent AI Load Balancing<br>Continuous Optimization Loop</h1>
+  <p class="sub">Live simulation of the analyzer-driven feedback loop optimizing LLM inference traffic across GPU backends</p>
+</header>
+
+<!-- ═══ STATUS BAR ═══ -->
+<div class="status-bar">
+  <div class="status-pill pill-running"><div class="dot"></div><span id="sim-state">SIMULATION RUNNING</span></div>
+  <div class="status-pill pill-req">⇄ <span id="stat-req">0</span> req/s</div>
+  <div class="status-pill pill-p99">⏱ P99 <span id="stat-p99">—</span> ms</div>
+  <div class="status-pill pill-gain">↑ <span id="stat-gain">~35%</span> vs round-robin</div>
+</div>
+
+<!-- ═══ MAIN LOOP DIAGRAM ═══ -->
+<div class="loop-diagram">
+<svg viewBox="0 0 1100 380" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Glow filters -->
+    <filter id="glow-cyan" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glow-green" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glow-yellow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <!-- Arrow markers -->
+    <marker id="arr-blue"   markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#00c8ff"/></marker>
+    <marker id="arr-yellow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#ffe066"/></marker>
+    <marker id="arr-cyan"   markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#00e5cc"/></marker>
+    <marker id="arr-green"  markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#7fff6e"/></marker>
+    <!-- Gradient backgrounds for boxes -->
+    <linearGradient id="grad-sources" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0a1822"/>
+      <stop offset="100%" stop-color="#050e18"/>
+    </linearGradient>
+    <linearGradient id="grad-analyzer" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0d1e10"/>
+      <stop offset="100%" stop-color="#060e08"/>
+    </linearGradient>
+    <linearGradient id="grad-httproute" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#140d00"/>
+      <stop offset="100%" stop-color="#0a0800"/>
+    </linearGradient>
+    <linearGradient id="grad-tmm" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#001a1c"/>
+      <stop offset="100%" stop-color="#000d0e"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ── Row band (subtle) ── -->
+  <rect x="0" y="20" width="1100" height="175" rx="6" fill="rgba(0,200,255,.008)"/>
+  <rect x="0" y="230" width="1100" height="110" rx="6" fill="rgba(0,229,204,.006)"/>
+
+  <!-- ═══════════════════════════════════ COMPONENT BOXES ══════════════════════════════ -->
+
+  <!-- 1. METRIC SOURCES -->
+  <g filter="url(#glow-cyan)">
+    <rect x="18" y="28" width="162" height="148" rx="10" fill="url(#grad-sources)" stroke="#00c8ff" stroke-width="1.5"/>
+  </g>
+  <text x="99" y="50" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="10" fill="#00c8ff" letter-spacing=".1em">METRIC SOURCES</text>
+  <line x1="30" y1="56" x2="168" y2="56" stroke="rgba(0,200,255,.2)" stroke-width=".8"/>
+  <!-- Source list -->
+  <text x="34" y="74" font-family="Share Tech Mono,monospace" font-size="9" fill="#00e5cc">▸ NIM / Prometheus</text>
+  <text x="34" y="91" font-family="Share Tech Mono,monospace" font-size="9" fill="#5a7a9a">▸ InfluxDB</text>
+  <text x="34" y="108" font-family="Share Tech Mono,monospace" font-size="9" fill="#5a7a9a">▸ CloudWatch</text>
+  <text x="34" y="125" font-family="Share Tech Mono,monospace" font-size="9" fill="#5a7a9a">▸ Custom APIs</text>
+  <text x="34" y="150" font-family="Exo 2,sans-serif" font-size="8.5" fill="#3a5a6a" font-weight="300">GPU util · latency · queue</text>
+  <text x="34" y="163" font-family="Exo 2,sans-serif" font-size="8.5" fill="#3a5a6a" font-weight="300">thermal · error rate</text>
+
+  <!-- 2. ANALYZER POD -->
+  <g filter="url(#glow-green)">
+    <rect x="248" y="28" width="170" height="148" rx="10" fill="url(#grad-analyzer)" stroke="#7fff6e" stroke-width="1.5"/>
+  </g>
+  <text x="333" y="50" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="10" fill="#7fff6e" letter-spacing=".1em">ANALYZER POD</text>
+  <line x1="260" y1="56" x2="406" y2="56" stroke="rgba(127,255,110,.2)" stroke-width=".8"/>
+  <!-- Dynamic metric bars (updated by JS) -->
+  <!-- GPU bar row -->
+  <text x="263" y="73" font-family="Share Tech Mono,monospace" font-size="8" fill="#5a7a9a">GPU AVG</text>
+  <rect x="316" y="63" width="78" height="7" rx="3" fill="rgba(255,255,255,.06)"/>
+  <rect id="az-gpu-bar" x="316" y="63" width="40" height="7" rx="3" fill="#00c8ff" opacity=".85"/>
+  <text id="az-gpu-val" x="400" y="72" font-family="Share Tech Mono,monospace" font-size="8" fill="#c8e8ff" text-anchor="end">50%</text>
+  <!-- Latency bar row -->
+  <text x="263" y="91" font-family="Share Tech Mono,monospace" font-size="8" fill="#5a7a9a">LATENCY</text>
+  <rect x="316" y="81" width="78" height="7" rx="3" fill="rgba(255,255,255,.06)"/>
+  <rect id="az-lat-bar" x="316" y="81" width="30" height="7" rx="3" fill="#ffe066" opacity=".85"/>
+  <text id="az-lat-val" x="400" y="90" font-family="Share Tech Mono,monospace" font-size="8" fill="#c8e8ff" text-anchor="end">18ms</text>
+  <!-- Queue bar row -->
+  <text x="263" y="109" font-family="Share Tech Mono,monospace" font-size="8" fill="#5a7a9a">QUEUE</text>
+  <rect x="316" y="99" width="78" height="7" rx="3" fill="rgba(255,255,255,.06)"/>
+  <rect id="az-q-bar" x="316" y="99" width="45" height="7" rx="3" fill="#c97bff" opacity=".85"/>
+  <text id="az-q-val" x="400" y="108" font-family="Share Tech Mono,monospace" font-size="8" fill="#c8e8ff" text-anchor="end">45</text>
+  <!-- Status -->
+  <text id="az-status" x="333" y="135" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8.5" fill="#7fff6e" opacity=".9">⟳ computing weights…</text>
+  <text x="333" y="152" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="8.5" fill="#3a5a6a" font-weight="300">LLMLoadMonitor script</text>
+  <text x="333" y="164" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="8.5" fill="#3a5a6a" font-weight="300">runs on 2s schedule</text>
+
+  <!-- 3. HTTPROUTE WEIGHTS -->
+  <g filter="url(#glow-yellow)">
+    <rect x="472" y="48" width="160" height="104" rx="10" fill="url(#grad-httproute)" stroke="#ffe066" stroke-width="1.5"/>
+  </g>
+  <text x="552" y="68" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="10" fill="#ffe066" letter-spacing=".08em">HTTPRoute</text>
+  <text x="552" y="81" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8.5" fill="#5a7a9a">weight annotations</text>
+  <line x1="484" y1="87" x2="620" y2="87" stroke="rgba(255,224,102,.2)" stroke-width=".8"/>
+  <!-- Weight display (updated by JS) -->
+  <text x="490" y="103" font-family="Share Tech Mono,monospace" font-size="9" fill="#8aaccc">backend-A:</text>
+  <text id="hr-weight-a" x="620" y="103" font-family="Share Tech Mono,monospace" font-size="9" fill="#ffe066" text-anchor="end">40%</text>
+  <text x="490" y="118" font-family="Share Tech Mono,monospace" font-size="9" fill="#8aaccc">backend-B:</text>
+  <text id="hr-weight-b" x="620" y="118" font-family="Share Tech Mono,monospace" font-size="9" fill="#ffe066" text-anchor="end">35%</text>
+  <text x="490" y="133" font-family="Share Tech Mono,monospace" font-size="9" fill="#8aaccc">backend-C:</text>
+  <text id="hr-weight-c" x="620" y="133" font-family="Share Tech Mono,monospace" font-size="9" fill="#ffe066" text-anchor="end">25%</text>
+  <text x="552" y="146" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="8" fill="#3a5a6a">patched by analyzer</text>
+
+  <!-- 4. TMM LOAD BALANCER -->
+  <g filter="url(#glow-cyan)">
+    <rect x="688" y="28" width="162" height="148" rx="10" fill="url(#grad-tmm)" stroke="#00e5cc" stroke-width="2"/>
+  </g>
+  <text x="769" y="50" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="10" fill="#00e5cc" letter-spacing=".08em">TMM</text>
+  <text x="769" y="63" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8.5" fill="#5a7a9a">BIG-IP Traffic Management</text>
+  <line x1="700" y1="70" x2="838" y2="70" stroke="rgba(0,229,204,.2)" stroke-width=".8"/>
+  <text x="700" y="86" font-family="Exo 2,sans-serif" font-size="8.5" fill="#3a5a6a" font-weight="300">Data plane on BlueField-3</text>
+  <text x="700" y="99" font-family="Exo 2,sans-serif" font-size="8.5" fill="#3a5a6a" font-weight="300">DPU. Reads HTTPRoute</text>
+  <text x="700" y="112" font-family="Exo 2,sans-serif" font-size="8.5" fill="#3a5a6a" font-weight="300">annotations, applies</text>
+  <text x="700" y="125" font-family="Exo 2,sans-serif" font-size="8.5" fill="#3a5a6a" font-weight="300">weighted distribution</text>
+  <text x="700" y="148" font-family="Share Tech Mono,monospace" font-size="8" fill="#00e5cc" opacity=".7">hardware-accelerated</text>
+  <text x="700" y="161" font-family="Share Tech Mono,monospace" font-size="8" fill="#00e5cc" opacity=".7">line-rate forwarding</text>
+
+  <!-- 5. BACKEND A -->
+  <rect x="908" y="20" width="175" height="52" rx="8" fill="#0d1e2e" stroke="#00c8ff" stroke-width="1.5"/>
+  <text x="995" y="38" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="10" fill="#00c8ff" letter-spacing=".1em">BACKEND A</text>
+  <text x="995" y="51" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="8.5" fill="#5a7a9a" font-weight="300">NVIDIA NIM / vLLM instance</text>
+  <!-- live weight badge -->
+  <rect id="bk-a-badge" x="908" y="59" width="30" height="12" rx="3" fill="#00c8ff" opacity=".85"/>
+  <text id="bk-a-pct" x="923" y="68" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="7.5" fill="#000" font-weight="600">40%</text>
+
+  <!-- 6. BACKEND B -->
+  <rect x="908" y="88" width="175" height="52" rx="8" fill="#0d1e2e" stroke="#00c8ff" stroke-width="1.5"/>
+  <text x="995" y="106" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="10" fill="#00c8ff" letter-spacing=".1em">BACKEND B</text>
+  <text x="995" y="119" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="8.5" fill="#5a7a9a" font-weight="300">NVIDIA NIM / vLLM instance</text>
+  <rect id="bk-b-badge" x="908" y="127" width="30" height="12" rx="3" fill="#00c8ff" opacity=".7"/>
+  <text id="bk-b-pct" x="923" y="136" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="7.5" fill="#000" font-weight="600">35%</text>
+
+  <!-- 7. BACKEND C -->
+  <rect x="908" y="156" width="175" height="52" rx="8" fill="#0d1e2e" stroke="#00c8ff" stroke-width="1.5"/>
+  <text x="995" y="174" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="10" fill="#00c8ff" letter-spacing=".1em">BACKEND C</text>
+  <text x="995" y="187" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="8.5" fill="#5a7a9a" font-weight="300">NVIDIA NIM / vLLM instance</text>
+  <rect id="bk-c-badge" x="908" y="195" width="30" height="12" rx="3" fill="#00c8ff" opacity=".5"/>
+  <text id="bk-c-pct" x="923" y="204" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="7.5" fill="#000" font-weight="600">25%</text>
+
+  <!-- ═══════════════════════════════════ STATIC ARROWS (visible paths) ══════════════ -->
+
+  <!-- Metrics → Analyzer -->
+  <path d="M180,102 H241" stroke="#00c8ff" stroke-width="1.4" marker-end="url(#arr-blue)"/>
+  <text x="210" y="95" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#00c8ff" opacity=".6">metrics</text>
+
+  <!-- Analyzer → HTTPRoute -->
+  <path d="M418,102 H465" stroke="#7fff6e" stroke-width="1.4" marker-end="url(#arr-green)"/>
+  <text x="441" y="95" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#7fff6e" opacity=".6">weights</text>
+
+  <!-- HTTPRoute → TMM -->
+  <path d="M632,102 H681" stroke="#ffe066" stroke-width="1.4" marker-end="url(#arr-yellow)"/>
+  <text x="656" y="95" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#ffe066" opacity=".6">config</text>
+
+  <!-- TMM → Backend A -->
+  <path d="M850,72 C880,72 908,46 908,46" stroke="#00e5cc" stroke-width="1.4" fill="none" marker-end="url(#arr-cyan)"/>
+  <!-- TMM → Backend B -->
+  <path d="M850,114 H901" stroke="#00e5cc" stroke-width="1.4" marker-end="url(#arr-cyan)"/>
+  <!-- TMM → Backend C -->
+  <path d="M850,152 C880,152 908,182 908,182" stroke="#00e5cc" stroke-width="1.4" fill="none" marker-end="url(#arr-cyan)"/>
+
+  <!-- Telemetry return arc (backends → metric sources, loops below) -->
+  <path d="M995,215 Q540,340 99,176" stroke="#7fff6e" stroke-width="1.4" fill="none" marker-end="url(#arr-green)" stroke-dasharray="none" opacity=".6"/>
+  <text x="540" y="342" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8.5" fill="#7fff6e" opacity=".5">telemetry feedback (GPU util · latency · queue depth · errors)</text>
+
+  <!-- ═════════════════════════════════ ANIMATED FLOW PATHS ════════════════════════ -->
+  <!-- These use stroke-dashoffset animation to create the "flowing dots" effect -->
+
+  <!-- Metrics flow (blue) -->
+  <path class="flow-metrics"
+        d="M180,102 H241"
+        stroke="#00c8ff" stroke-width="3"
+        stroke-dasharray="5 10"
+        fill="none" opacity=".75"/>
+
+  <!-- Weights flow (green) -->
+  <path class="flow-weights"
+        d="M418,102 H465"
+        stroke="#7fff6e" stroke-width="3"
+        stroke-dasharray="5 10"
+        fill="none" opacity=".75"/>
+
+  <!-- Config flow (yellow) -->
+  <path class="flow-config"
+        d="M632,102 H681"
+        stroke="#ffe066" stroke-width="3"
+        stroke-dasharray="5 10"
+        fill="none" opacity=".75"/>
+
+  <!-- Traffic to Backend A (teal, speed = weight) -->
+  <path id="flow-a" class="flow-traffic-a"
+        d="M850,72 C880,72 908,46 908,46"
+        stroke="#00e5cc" stroke-width="3"
+        stroke-dasharray="5 10"
+        fill="none" opacity=".85"/>
+
+  <!-- Traffic to Backend B -->
+  <path id="flow-b" class="flow-traffic-b"
+        d="M850,114 H901"
+        stroke="#00e5cc" stroke-width="3"
+        stroke-dasharray="5 10"
+        fill="none" opacity=".7"/>
+
+  <!-- Traffic to Backend C -->
+  <path id="flow-c" class="flow-traffic-c"
+        d="M850,152 C880,152 908,182 908,182"
+        stroke="#00e5cc" stroke-width="3"
+        stroke-dasharray="5 10"
+        fill="none" opacity=".55"/>
+
+  <!-- Telemetry return (green, slower) -->
+  <path class="flow-telemetry"
+        d="M995,215 Q540,340 99,176"
+        stroke="#7fff6e" stroke-width="2.5"
+        stroke-dasharray="4 14"
+        fill="none" opacity=".6"/>
+
+  <!-- ═══ LOOP LABEL ═══ -->
+  <text x="550" y="365" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="9" fill="#ffffff" opacity=".12" letter-spacing=".2em">⟲  CONTINUOUS OPTIMIZATION LOOP  ⟲</text>
+
+</svg>
+</div><!-- /loop-diagram -->
+
+<!-- ═══ METRICS GRID ═══ -->
+<div class="metrics-grid">
+
+  <!-- Backend A card -->
+  <div class="backend-card" id="card-a" style="--card-stripe: #00c8ff">
+    <div class="card-header">
+      <div class="card-name">▸ BACKEND A</div>
+      <div>
+        <div class="card-weight" id="card-a-weight">40%</div>
+        <div class="weight-label">traffic share</div>
+      </div>
+    </div>
+    <div class="metric-row">
+      <div class="metric-label">GPU util</div>
+      <div class="metric-bar-wrap"><div class="metric-bar bar-gpu" id="bar-a-gpu" style="width:45%"></div></div>
+      <div class="metric-val" id="val-a-gpu">45%</div>
+    </div>
+    <div class="metric-row">
+      <div class="metric-label">Latency P99</div>
+      <div class="metric-bar-wrap"><div class="metric-bar bar-latency" id="bar-a-lat" style="width:12%"></div></div>
+      <div class="metric-val" id="val-a-lat">12ms</div>
+    </div>
+    <div class="metric-row">
+      <div class="metric-label">Queue depth</div>
+      <div class="metric-bar-wrap"><div class="metric-bar bar-queue" id="bar-a-q" style="width:30%"></div></div>
+      <div class="metric-val" id="val-a-q">30</div>
+    </div>
+    <div class="metric-row">
+      <div class="metric-label">Error rate</div>
+      <div class="metric-bar-wrap"><div class="metric-bar bar-error" id="bar-a-err" style="width:2%"></div></div>
+      <div class="metric-val" id="val-a-err">0.1%</div>
+    </div>
+    <div class="weight-track"><div class="weight-fill" id="wf-a" style="width:40%"></div></div>
+  </div>
+
+  <!-- Backend B card -->
+  <div class="backend-card" id="card-b" style="--card-stripe: #00c8ff">
+    <div class="card-header">
+      <div class="card-name">▸ BACKEND B</div>
+      <div>
+        <div class="card-weight" id="card-b-weight">35%</div>
+        <div class="weight-label">traffic share</div>
+      </div>
+    </div>
+    <div class="metric-row">
+      <div class="metric-label">GPU util</div>
+      <div class="metric-bar-wrap"><div class="metric-bar bar-gpu" id="bar-b-gpu" style="width:62%"></div></div>
+      <div class="metric-val" id="val-b-gpu">62%</div>
+    </div>
+    <div class="metric-row">
+      <div class="metric-label">Latency P99</div>
+      <div class="metric-bar-wrap"><div class="metric-bar bar-latency" id="bar-b-lat" style="width:18%"></div></div>
+      <div class="metric-val" id="val-b-lat">18ms</div>
+    </div>
+    <div class="metric-row">
+      <div class="metric-label">Queue depth</div>
+      <div class="metric-bar-wrap"><div class="metric-bar bar-queue" id="bar-b-q" style="width:48%"></div></div>
+      <div class="metric-val" id="val-b-q">48</div>
+    </div>
+    <div class="metric-row">
+      <div class="metric-label">Error rate</div>
+      <div class="metric-bar-wrap"><div class="metric-bar bar-error" id="bar-b-err" style="width:4%"></div></div>
+      <div class="metric-val" id="val-b-err">0.2%</div>
+    </div>
+    <div class="weight-track"><div class="weight-fill" id="wf-b" style="width:35%"></div></div>
+  </div>
+
+  <!-- Backend C card -->
+  <div class="backend-card" id="card-c" style="--card-stripe: #00c8ff">
+    <div class="card-header">
+      <div class="card-name">▸ BACKEND C</div>
+      <div>
+        <div class="card-weight" id="card-c-weight">25%</div>
+        <div class="weight-label">traffic share</div>
+      </div>
+    </div>
+    <div class="metric-row">
+      <div class="metric-label">GPU util</div>
+      <div class="metric-bar-wrap"><div class="metric-bar bar-gpu" id="bar-c-gpu" style="width:78%"></div></div>
+      <div class="metric-val" id="val-c-gpu">78%</div>
+    </div>
+    <div class="metric-row">
+      <div class="metric-label">Latency P99</div>
+      <div class="metric-bar-wrap"><div class="metric-bar bar-latency" id="bar-c-lat" style="width:25%"></div></div>
+      <div class="metric-val" id="val-c-lat">25ms</div>
+    </div>
+    <div class="metric-row">
+      <div class="metric-label">Queue depth</div>
+      <div class="metric-bar-wrap"><div class="metric-bar bar-queue" id="bar-c-q" style="width:62%"></div></div>
+      <div class="metric-val" id="val-c-q">62</div>
+    </div>
+    <div class="metric-row">
+      <div class="metric-label">Error rate</div>
+      <div class="metric-bar-wrap"><div class="metric-bar bar-error" id="bar-c-err" style="width:8%"></div></div>
+      <div class="metric-val" id="val-c-err">0.4%</div>
+    </div>
+    <div class="weight-track"><div class="weight-fill" id="wf-c" style="width:25%"></div></div>
+  </div>
+</div><!-- /metrics-grid -->
+
+<!-- ═══ BOTTOM ROW ═══ -->
+<div class="bottom-row">
+
+  <!-- Controls -->
+  <div class="controls-panel">
+    <div class="controls-title">Simulation Controls</div>
+    <button class="ctrl-btn btn-pause" id="btn-pause" onclick="togglePause()">
+      <span id="pause-icon">⏸</span> <span id="pause-label">Pause</span>
+    </button>
+    <button class="ctrl-btn btn-anomaly" id="btn-anomaly" onclick="injectAnomaly()">
+      ⚡ Inject Anomaly
+    </button>
+    <button class="ctrl-btn btn-reset" onclick="resetSim()">
+      ↺ Reset State
+    </button>
+    <div class="speed-row">
+      <span class="speed-label">Speed:</span>
+      <button class="speed-btn" id="spd-half"  onclick="setSpeed(0.5)">½×</button>
+      <button class="speed-btn active" id="spd-1x" onclick="setSpeed(1)">1×</button>
+      <button class="speed-btn" id="spd-2x"   onclick="setSpeed(2)">2×</button>
+    </div>
+  </div>
+
+  <!-- Event Log -->
+  <div class="event-log">
+    <div class="log-title">⬛ Optimizer Event Log</div>
+    <div class="log-entries" id="logEntries"></div>
+  </div>
+
+</div><!-- /bottom-row -->
+
+</div><!-- /page -->
+
+<!-- ═══════════════════════════════════════════════════════════
+     SIMULATION ENGINE
+════════════════════════════════════════════════════════════ -->
+<script>
+// ── State ──────────────────────────────────────────────────
+var sim = {
+  running: true,
+  speed: 1,
+  interval: null,
+  anomalyTarget: null,
+  anomalyTicks: 0,
+  totalReqs: 0,
+  tick: 0,
+  backends: {
+    A: { gpu: 45, lat: 12, queue: 30, err: 0.1 },
+    B: { gpu: 62, lat: 18, queue: 48, err: 0.2 },
+    C: { gpu: 78, lat: 25, queue: 62, err: 0.4 }
+  },
+  weights: { A: 40, B: 35, C: 25 }
+};
+
+// ── Helpers ────────────────────────────────────────────────
+function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+function rw(v, lo, hi, step) {
+  return clamp(v + (Math.random() - 0.5) * step * 2, lo, hi);
+}
+function now() {
+  var d = new Date();
+  return d.getHours().toString().padStart(2,'0') + ':' +
+         d.getMinutes().toString().padStart(2,'0') + ':' +
+         d.getSeconds().toString().padStart(2,'0');
+}
+
+// ── Weight calculation (inverse load scoring) ─────────────
+function calcWeights(backends) {
+  var scores = {};
+  ['A','B','C'].forEach(function(k) {
+    var b = backends[k];
+    // Lower load = higher score = more traffic
+    var load = b.gpu * 0.45 + (b.lat / 300) * 100 * 0.25 +
+               b.queue * 0.2 + b.err * 10 * 0.1;
+    scores[k] = Math.max(5, 105 - load);
+  });
+  var total = scores.A + scores.B + scores.C;
+  return {
+    A: Math.round(scores.A / total * 100),
+    B: Math.round(scores.B / total * 100),
+    C: 100 - Math.round(scores.A / total * 100) - Math.round(scores.B / total * 100)
+  };
+}
+
+// ── DOM updates ───────────────────────────────────────────
+function setBar(id, pct) {
+  var el = document.getElementById(id);
+  if (el) el.style.width = clamp(pct, 0, 100) + '%';
+}
+function setText(id, val) {
+  var el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+function setSvgAttr(id, attr, val) {
+  var el = document.getElementById(id);
+  if (el) el.setAttribute(attr, val);
+}
+
+function updateFlowSpeeds() {
+  var BASE = 1500; // ms at 40% weight
+  ['a','b','c'].forEach(function(k) {
+    var w = sim.weights[k.toUpperCase()];
+    var dur = clamp(BASE * 40 / w, 500, 5000) / 1000;
+    var el = document.getElementById('flow-' + k);
+    if (el) el.style.animationDuration = dur.toFixed(2) + 's';
+    // also fade opacity based on weight
+    var opacity = clamp(0.3 + (w / 100) * 0.7, 0.2, 1.0);
+    if (el) el.style.opacity = opacity.toFixed(2);
+  });
+}
+
+function updateDOM() {
+  var b = sim.backends;
+  var w = sim.weights;
+
+  // ── Metric cards ──
+  ['A','B','C'].forEach(function(k) {
+    var bk = b[k], lk = k.toLowerCase();
+    var latPct = clamp(bk.lat / 300 * 100, 0, 100);
+    var errPct = clamp(bk.err * 20, 0, 100);
+    setBar('bar-' + lk + '-gpu', bk.gpu);
+    setBar('bar-' + lk + '-lat', latPct);
+    setBar('bar-' + lk + '-q',   bk.queue);
+    setBar('bar-' + lk + '-err', errPct);
+    setText('val-' + lk + '-gpu', Math.round(bk.gpu) + '%');
+    setText('val-' + lk + '-lat', Math.round(bk.lat) + 'ms');
+    setText('val-' + lk + '-q',   Math.round(bk.queue));
+    setText('val-' + lk + '-err', bk.err.toFixed(1) + '%');
+    setText('card-' + lk + '-weight', w[k] + '%');
+    setBar('wf-' + lk, w[k]);
+
+    // Anomaly highlight
+    var card = document.getElementById('card-' + lk);
+    if (card) {
+      if (sim.anomalyTarget === k) card.classList.add('anomaly-active');
+      else card.classList.remove('anomaly-active');
+    }
+  });
+
+  // ── HTTPRoute weight display ──
+  setText('hr-weight-a', w.A + '%');
+  setText('hr-weight-b', w.B + '%');
+  setText('hr-weight-c', w.C + '%');
+
+  // ── SVG backend weight badges ──
+  ['A','B','C'].forEach(function(k) {
+    var lk = k.toLowerCase();
+    setText('bk-' + lk + '-pct', w[k] + '%');
+    var ww = clamp(w[k] / 100 * 38, 16, 38);
+    setSvgAttr('bk-' + lk + '-badge', 'width', ww);
+    var opacity = clamp(0.3 + (w[k] / 100) * 0.8, 0.3, 1.0);
+    setSvgAttr('bk-' + lk + '-badge', 'opacity', opacity.toFixed(2));
+  });
+
+  // ── Analyzer status ──
+  var statuses = [
+    '⟳ computing weights…',
+    '✓ weights applied',
+    '⟳ sampling metrics…',
+    '⟳ recalculating…',
+    '✓ HTTPRoute patched'
+  ];
+  setText('az-status', statuses[sim.tick % statuses.length]);
+
+  // ── Analyzer avg bars (average across backends) ──
+  var avgGpu = (b.A.gpu + b.B.gpu + b.C.gpu) / 3;
+  var avgLat = (b.A.lat + b.B.lat + b.C.lat) / 3;
+  var avgQ   = (b.A.queue + b.B.queue + b.C.queue) / 3;
+  var gpuBarW = clamp(avgGpu / 100 * 78, 2, 78);
+  var latBarW = clamp(avgLat / 300 * 78, 2, 78);
+  var qBarW   = clamp(avgQ   / 100 * 78, 2, 78);
+  setSvgAttr('az-gpu-bar', 'width', gpuBarW.toFixed(1));
+  setSvgAttr('az-lat-bar', 'width', latBarW.toFixed(1));
+  setSvgAttr('az-q-bar',   'width', qBarW.toFixed(1));
+  setText('az-gpu-val', Math.round(avgGpu) + '%');
+  setText('az-lat-val', Math.round(avgLat) + 'ms');
+  setText('az-q-val',   Math.round(avgQ));
+
+  // ── Status bar ──
+  var rps = Math.round(60 + Math.random() * 40 + (w.A + w.B + w.C) / 3);
+  sim.totalReqs += rps;
+  setText('stat-req', rps);
+  var p99 = Math.round((b.A.lat * w.A + b.B.lat * w.B + b.C.lat * w.C) / 100);
+  setText('stat-p99', p99);
+
+  // ── Flow animation speeds ──
+  updateFlowSpeeds();
+}
+
+// ── Simulation tick ───────────────────────────────────────
+function tick() {
+  if (!sim.running) return;
+  sim.tick++;
+
+  var b = sim.backends;
+
+  // Random walk all metrics
+  b.A.gpu   = rw(b.A.gpu,   5, 95,  6);
+  b.A.lat   = rw(b.A.lat,   5, 180, 4);
+  b.A.queue = rw(b.A.queue, 0, 100, 8);
+  b.A.err   = rw(b.A.err,   0, 3,   0.2);
+  b.B.gpu   = rw(b.B.gpu,   5, 95,  6);
+  b.B.lat   = rw(b.B.lat,   5, 180, 4);
+  b.B.queue = rw(b.B.queue, 0, 100, 8);
+  b.B.err   = rw(b.B.err,   0, 3,   0.2);
+  b.C.gpu   = rw(b.C.gpu,   5, 95,  6);
+  b.C.lat   = rw(b.C.lat,   5, 180, 4);
+  b.C.queue = rw(b.C.queue, 0, 100, 8);
+  b.C.err   = rw(b.C.err,   0, 3,   0.2);
+
+  // Anomaly spike
+  if (sim.anomalyTarget) {
+    var ak = sim.anomalyTarget;
+    b[ak].gpu   = clamp(b[ak].gpu   + 18, 0, 99);
+    b[ak].lat   = clamp(b[ak].lat   + 35, 0, 280);
+    b[ak].queue = clamp(b[ak].queue + 22, 0, 100);
+    b[ak].err   = clamp(b[ak].err   + 1.2, 0, 8);
+    sim.anomalyTicks--;
+    if (sim.anomalyTicks <= 0) {
+      logEvent('✓ Backend ' + ak + ' recovering — weights auto-adjusted', 'ok');
+      sim.anomalyTarget = null;
+      document.getElementById('btn-anomaly').disabled = false;
+    }
+  }
+
+  // Recalculate weights
+  var newW = calcWeights(b);
+  var changed = [];
+  ['A','B','C'].forEach(function(k) {
+    if (Math.abs(newW[k] - sim.weights[k]) >= 4) {
+      changed.push('Backend ' + k + ': ' + sim.weights[k] + '% → ' + newW[k] + '%');
+    }
+  });
+  if (changed.length) {
+    logEvent('⚙ Weights rebalanced — ' + changed.join(' | '), 'info');
+  }
+  sim.weights = newW;
+
+  // Periodic info logs
+  if (sim.tick % 5 === 0) {
+    var best = Object.keys(b).reduce(function(a, k) { return b[k].gpu < b[a].gpu ? k : a; }, 'A');
+    logEvent('📊 Analyzer sampled metrics — lowest GPU load: Backend ' + best +
+             ' (' + Math.round(b[best].gpu) + '%)', 'info');
+  }
+  if (sim.tick % 8 === 0) {
+    logEvent('✓ HTTPRoute annotations patched — TMM distribution updated', 'ok');
+  }
+  if (sim.tick % 12 === 0) {
+    var p99now = Math.round((b.A.lat * sim.weights.A + b.B.lat * sim.weights.B + b.C.lat * sim.weights.C) / 100);
+    logEvent('⏱ P99 latency: ' + p99now + 'ms  |  Est. gain vs RR: ' +
+             (30 + Math.round(Math.random() * 12)) + '%', 'ok');
+  }
+
+  updateDOM();
+}
+
+// ── Logging ───────────────────────────────────────────────
+function logEvent(msg, level) {
+  level = level || 'info';
+  var container = document.getElementById('logEntries');
+  var entry = document.createElement('div');
+  entry.className = 'log-entry level-' + level;
+  entry.innerHTML = '<span class="log-time">' + now() + '</span><span>' + msg + '</span>';
+  container.prepend(entry);
+  // Keep log trimmed
+  while (container.children.length > 50) {
+    container.removeChild(container.lastChild);
+  }
+}
+
+// ── Controls ──────────────────────────────────────────────
+function togglePause() {
+  sim.running = !sim.running;
+  var icon  = document.getElementById('pause-icon');
+  var label = document.getElementById('pause-label');
+  var pill  = document.querySelector('.pill-running span');
+  if (sim.running) {
+    icon.textContent  = '⏸';
+    label.textContent = 'Pause';
+    pill.textContent  = 'SIMULATION RUNNING';
+    logEvent('▶ Simulation resumed', 'ok');
+  } else {
+    icon.textContent  = '▶';
+    label.textContent = 'Resume';
+    pill.textContent  = 'SIMULATION PAUSED';
+    logEvent('⏸ Simulation paused', 'warn');
+  }
+}
+
+function injectAnomaly() {
+  if (sim.anomalyTarget) return;
+  var targets = ['A','B','C'];
+  var t = targets[Math.floor(Math.random() * 3)];
+  sim.anomalyTarget = t;
+  sim.anomalyTicks  = 5;
+  document.getElementById('btn-anomaly').disabled = true;
+  logEvent('⚡ ANOMALY INJECTED — Backend ' + t + ' degrading (GPU spike + queue overflow)', 'alert');
+  logEvent('⟳ Analyzer detected elevated metrics on Backend ' + t + ' — recalculating…', 'warn');
+}
+
+function resetSim() {
+  sim.backends = {
+    A: { gpu: 45, lat: 12, queue: 30, err: 0.1 },
+    B: { gpu: 62, lat: 18, queue: 48, err: 0.2 },
+    C: { gpu: 78, lat: 25, queue: 62, err: 0.4 }
+  };
+  sim.weights = { A: 40, B: 35, C: 25 };
+  sim.anomalyTarget = null;
+  sim.anomalyTicks  = 0;
+  sim.tick = 0;
+  document.getElementById('btn-anomaly').disabled = false;
+  updateDOM();
+  logEvent('↺ Simulation state reset to defaults', 'info');
+}
+
+function setSpeed(s) {
+  sim.speed = s;
+  clearInterval(sim.interval);
+  sim.interval = setInterval(tick, 2000 / s);
+  ['half','1x','2x'].forEach(function(id) { document.getElementById('spd-'+id).classList.remove('active'); });
+  var map = { 0.5: 'half', 1: '1x', 2: '2x' };
+  var el = document.getElementById('spd-' + map[s]);
+  if (el) el.classList.add('active');
+  logEvent('⚡ Simulation speed set to ' + s + '×', 'info');
+}
+
+// ── Boot ──────────────────────────────────────────────────
+logEvent('🟢 BNK Intelligent AI Load Balancer online', 'ok');
+logEvent('⟳ f5-analyzer pod active — LLMLoadMonitor script running', 'info');
+logEvent('📡 Prometheus scraping NIM/vLLM metrics — 3 backends registered', 'info');
+
+updateDOM();
+sim.interval = setInterval(tick, 2000);
+</script>
+</body>
+</html>
