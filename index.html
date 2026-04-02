@@ -358,6 +358,61 @@ svg.arch .node.selected rect { filter: brightness(1.5) drop-shadow(0 0 8px curre
 /* ng-hide transition */
 .ng-hide-add, .ng-hide-remove { transition: opacity .2s; }
 .ng-hide { opacity: 0 !important; }
+
+/* ── Zoom Controls ── */
+.diagram {
+  position: relative;
+}
+.zoom-controls {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 10;
+}
+.zoom-btn {
+  width: 32px;
+  height: 32px;
+  background: rgba(5,20,40,.92);
+  border: 1px solid rgba(0,200,255,.3);
+  border-radius: 6px;
+  color: #00c8ff;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Share Tech Mono', monospace;
+  transition: border-color .2s, background .2s;
+  user-select: none;
+}
+.zoom-btn:hover { background: rgba(0,200,255,.15); border-color: #00c8ff; }
+.zoom-btn.reset { font-size: .6rem; letter-spacing: .05em; color: var(--muted); border-color: rgba(255,255,255,.12); }
+.zoom-btn.reset:hover { color: var(--text); border-color: rgba(255,255,255,.3); }
+.zoom-level {
+  text-align: center;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: .62rem;
+  color: var(--muted);
+  padding: 2px 0;
+}
+.diagram-viewport {
+  width: 100%;
+  overflow: hidden;
+  border-radius: 8px;
+  cursor: grab;
+  background: transparent;
+}
+.diagram-viewport.panning { cursor: grabbing; }
+.diagram-viewport svg.arch {
+  transform-origin: 0 0;
+  will-change: transform;
+  display: block;
+  transition: none;
+}
 </style>
 </head>
 
@@ -417,11 +472,17 @@ svg.arch .node.selected rect { filter: brightness(1.5) drop-shadow(0 0 8px curre
   </div>
 
   <!-- ═══ DIAGRAM SVG ═══ -->
-  <!-- FIX: Removed backtick code-fence markers (```) that were embedded in the SVG,
-       which caused the entire node/link block to be treated as invalid SVG text nodes,
-       breaking all <a> hyperlinks and making nodes invisible. -->
   <div class="diagram">
-  <svg class="arch" viewBox="0 0 1100 520" xmlns="http://www.w3.org/2000/svg">
+    <!-- Zoom controls -->
+    <div class="zoom-controls">
+      <button class="zoom-btn" id="zoomIn"  title="Zoom in">+</button>
+      <div    class="zoom-level" id="zoomLevel">100%</div>
+      <button class="zoom-btn" id="zoomOut" title="Zoom out">−</button>
+      <button class="zoom-btn reset" id="zoomReset" title="Reset view">RST</button>
+    </div>
+    <!-- Pannable / zoomable viewport -->
+    <div class="diagram-viewport" id="diagramViewport">
+  <svg class="arch" id="archSvg" viewBox="0 0 1100 520" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <filter id="glow-blue" x="-30%" y="-30%" width="160%" height="160%">
         <feGaussianBlur stdDeviation="4" result="blur"/>
@@ -643,7 +704,8 @@ svg.arch .node.selected rect { filter: brightness(1.5) drop-shadow(0 0 8px curre
     <text x="590" y="506" font-family="Share Tech Mono,monospace" font-size="9" fill="#00e5cc" opacity=".7">monitors (HTTPRoute or L4Route)</text>
 
   </svg>
-  </div>
+    </div><!-- /diagram-viewport -->
+  </div><!-- /diagram -->
 
   <!-- ═══ SEARCH BAR (AngularJS) ═══ -->
   <div class="search-wrap">
@@ -716,7 +778,7 @@ angular.module('bnkApp', [])
       category: 'Gateway / Routing',
       cat: 'gateway',
       color: '#00c8ff',
-      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/bnk-ficforgatewayapi.html',
+      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/custom-resource-definitions/bnk-bnkgateway.html',
       desc: 'Used with the F5 IPAM Controller (FIC) to automatically allocate VIP addresses for a Gateway. <strong style="color:#00c8ff">Note:</strong> Using BNKGateway in BIG-IP for Kubernetes is optional.'
     },
     {
@@ -724,7 +786,7 @@ angular.module('bnkApp', [])
       category: 'Gateway / Routing',
       cat: 'gateway',
       color: '#00c8ff',
-      url: 'https://gateway-api.sigs.k8s.io/concepts/api-overview/',
+      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/custom-resource-definitions/bnk-gateway-api-gateway.html',
       desc: 'Standard Kubernetes Gateway API object. Declares listeners (up to 64 per gateway). HTTPRoute and L4Route attach here via <code>parentRef</code>.'
     },
     {
@@ -732,7 +794,7 @@ angular.module('bnkApp', [])
       category: 'Gateway / Routing',
       cat: 'gateway',
       color: '#00c8ff',
-      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/bnk-gateway-api-httproute.html',
+      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/custom-resource-definitions/bnk-gateway-api-httproute.html',
       desc: 'Routing rules that reference a parent Gateway. HTTPRoute handles L7 path-based traffic; L4Route handles TCP/UDP port-based forwarding.'
     },
     {
@@ -740,7 +802,7 @@ angular.module('bnkApp', [])
       category: 'Gateway / Routing',
       cat: 'gateway',
       color: '#00c8ff',
-      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/bnk-gateway-api-l4route.html',
+      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/custom-resource-definitions/bnk-gateway-api-l4route.html',
       desc: 'Defines TCP/UDP port-based routing rules attached to a parent Gateway via <code>parentRef</code>. Complements HTTPRoute for non-HTTP traffic.'
     },
     {
@@ -748,7 +810,7 @@ angular.module('bnkApp', [])
       category: 'Policy Attachment',
       cat: 'policy',
       color: '#c97bff',
-      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/bnk-irule-in-gatewayapi.html',
+      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/custom-resource-definitions/bnk-irule-in-gatewayapi.html#gnknetpolicy',
       desc: 'Attaches iRule or general network policy at the Gateway level or at an individual Listener. Enables custom traffic manipulation without modifying routes.'
     },
     {
@@ -756,7 +818,7 @@ angular.module('bnkApp', [])
       category: 'Policy Attachment',
       cat: 'policy',
       color: '#c97bff',
-      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/bnk-irule-in-gatewayapi.html',
+      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/custom-resource-definitions/bnk-irule-in-gatewayapi.html',
       desc: 'The TCL iRule definition (inline or via ConfigMap) referenced by a BNKNetPolicy. Contains the actual traffic logic — header rewrites, redirects, persistence, logging, etc.'
     },
     {
@@ -772,7 +834,7 @@ angular.module('bnkApp', [])
       category: 'Security / Firewall',
       cat: 'security',
       color: '#7fff6e',
-      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/bnk-bnkSecPolicy.html',
+      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/custom-resource-definitions/bnk-bnkSecPolicy.html',
       desc: 'Higher-level security wrapper that references an F5BigFwPolicy. Provides a Kubernetes-native way to compose and attach security posture to a Gateway.'
     },
     {
@@ -780,7 +842,7 @@ angular.module('bnkApp', [])
       category: 'Network / Egress',
       cat: 'network',
       color: '#ff6b35',
-      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/spk-egress-crd.html',
+      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/custom-resource-definitions/spk-egress-crd.html',
       desc: 'Enables egress connectivity for internal pods that need access to external networks. Supports three SNAT modes: <strong>SNAT none</strong> (pod IP used), <strong>SNAT automap</strong> (TMM external VLAN self-IP, default), or <strong>SNAT pool</strong> (optionally references an F5SPKSnatpool CR). Must also reference an F5SPKDnscache CR for DNS caching. Applied to the namespace where the TMM pod is configured.'
     },
     {
@@ -804,7 +866,7 @@ angular.module('bnkApp', [])
       category: 'AI / Analytics',
       cat: 'ai',
       color: '#00e5cc',
-      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/how-tos/ai-related-features/intelligent-ai-load-balancing/cr-parameters.html',
+      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/use-cases/intelligent-ai-load-balancing/cr-parameters.html',
       desc: 'An optional BNK pod enabled via CNEInstance (intelligentLB: true). Defined by the <strong>F5BigAnalyzer CR</strong>, it attaches to one or more <strong>HTTPRoute or L4Route</strong> resources via the <code>applications</code> field. Queries Prometheus metrics and runs a script (built-in <em>LLMLoadMonitor</em> or custom) on a schedule to dynamically adjust route weights for intelligent LLM load balancing. Primarily for DPU installations.'
     }
   ];
@@ -845,6 +907,136 @@ angular.module('bnkApp', [])
   };
 
 }]);
+</script>
+
+<!-- ═══ ZOOM / PAN ENGINE ═══ -->
+<script>
+(function() {
+  var MIN_SCALE = 0.4, MAX_SCALE = 4, STEP = 0.2;
+  var scale = 1, panX = 0, panY = 0;
+  var isPanning = false, startX = 0, startY = 0, startPanX = 0, startPanY = 0;
+
+  var viewport  = document.getElementById('diagramViewport');
+  var svg       = document.getElementById('archSvg');
+  var levelEl   = document.getElementById('zoomLevel');
+
+  function applyTransform() {
+    svg.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + scale + ')';
+    levelEl.textContent = Math.round(scale * 100) + '%';
+    // Keep viewport height in sync so the page doesn't jump
+    var naturalH = viewport.clientWidth * (520 / 1100);
+    viewport.style.height = (naturalH * scale + Math.abs(panY) + 40) + 'px';
+  }
+
+  function clampPan() {
+    // Allow some overflow but not losing the diagram entirely
+    var svgW = viewport.clientWidth * scale;
+    var svgH = viewport.clientWidth * (520 / 1100) * scale;
+    panX = Math.min(svgW * 0.8, Math.max(-(svgW * 0.8), panX));
+    panY = Math.min(svgH * 0.8, Math.max(-(svgH * 0.8), panY));
+  }
+
+  function zoomAt(newScale, originX, originY) {
+    // originX/Y are positions within the viewport element
+    var ratio = newScale / scale;
+    panX = originX - ratio * (originX - panX);
+    panY = originY - ratio * (originY - panY);
+    scale = newScale;
+    clampPan();
+    applyTransform();
+  }
+
+  // ── Button controls ──────────────────────────────────────────────
+  document.getElementById('zoomIn').addEventListener('click', function() {
+    var cx = viewport.clientWidth / 2, cy = viewport.clientHeight / 2;
+    zoomAt(Math.min(MAX_SCALE, parseFloat((scale + STEP).toFixed(2))), cx, cy);
+  });
+  document.getElementById('zoomOut').addEventListener('click', function() {
+    var cx = viewport.clientWidth / 2, cy = viewport.clientHeight / 2;
+    zoomAt(Math.max(MIN_SCALE, parseFloat((scale - STEP).toFixed(2))), cx, cy);
+  });
+  document.getElementById('zoomReset').addEventListener('click', function() {
+    scale = 1; panX = 0; panY = 0;
+    viewport.style.height = '';
+    applyTransform();
+  });
+
+  // ── Mouse-wheel zoom (zoom toward cursor) ─────────────────────────
+  viewport.addEventListener('wheel', function(e) {
+    e.preventDefault();
+    var rect    = viewport.getBoundingClientRect();
+    var originX = e.clientX - rect.left;
+    var originY = e.clientY - rect.top;
+    var delta   = e.deltaY < 0 ? STEP : -STEP;
+    var newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE,
+                    parseFloat((scale + delta).toFixed(2))));
+    zoomAt(newScale, originX, originY);
+  }, { passive: false });
+
+  // ── Click-drag to pan ─────────────────────────────────────────────
+  viewport.addEventListener('mousedown', function(e) {
+    // Only pan on left-click without hitting an SVG <a> node
+    if (e.button !== 0) return;
+    isPanning  = true;
+    startX     = e.clientX;
+    startY     = e.clientY;
+    startPanX  = panX;
+    startPanY  = panY;
+    viewport.classList.add('panning');
+  });
+  window.addEventListener('mousemove', function(e) {
+    if (!isPanning) return;
+    panX = startPanX + (e.clientX - startX);
+    panY = startPanY + (e.clientY - startY);
+    clampPan();
+    applyTransform();
+  });
+  window.addEventListener('mouseup', function() {
+    if (!isPanning) return;
+    isPanning = false;
+    viewport.classList.remove('panning');
+  });
+
+  // ── Touch support (pinch-to-zoom + drag) ─────────────────────────
+  var lastTouchDist = null, lastTouchMid = null;
+  viewport.addEventListener('touchstart', function(e) {
+    if (e.touches.length === 2) {
+      var t = e.touches;
+      lastTouchDist = Math.hypot(t[1].clientX - t[0].clientX, t[1].clientY - t[0].clientY);
+      lastTouchMid  = { x: (t[0].clientX + t[1].clientX) / 2,
+                        y: (t[0].clientY + t[1].clientY) / 2 };
+    } else if (e.touches.length === 1) {
+      isPanning = true;
+      startX    = e.touches[0].clientX;
+      startY    = e.touches[0].clientY;
+      startPanX = panX; startPanY = panY;
+    }
+  }, { passive: true });
+  viewport.addEventListener('touchmove', function(e) {
+    if (e.touches.length === 2 && lastTouchDist) {
+      e.preventDefault();
+      var t    = e.touches;
+      var dist = Math.hypot(t[1].clientX - t[0].clientX, t[1].clientY - t[0].clientY);
+      var mid  = { x: (t[0].clientX + t[1].clientX) / 2,
+                   y: (t[0].clientY + t[1].clientY) / 2 };
+      var rect = viewport.getBoundingClientRect();
+      var newS = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale * (dist / lastTouchDist)));
+      zoomAt(newS, mid.x - rect.left, mid.y - rect.top);
+      lastTouchDist = dist;
+      lastTouchMid  = mid;
+    } else if (e.touches.length === 1 && isPanning) {
+      panX = startPanX + (e.touches[0].clientX - startX);
+      panY = startPanY + (e.touches[0].clientY - startY);
+      clampPan(); applyTransform();
+    }
+  }, { passive: false });
+  viewport.addEventListener('touchend', function() {
+    isPanning = false; lastTouchDist = null; lastTouchMid = null;
+  });
+
+  // Initial render
+  applyTransform();
+})();
 </script>
 </body>
 </html>
