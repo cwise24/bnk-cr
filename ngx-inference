@@ -1,0 +1,1377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NGINX Gateway Fabric · EPP Inference Router (GSAP v5)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; background: #030712; }
+    ::-webkit-scrollbar        { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track  { background: #111827; }
+    ::-webkit-scrollbar-thumb  { background: #374151; border-radius: 3px; }
+    select option { background: #1f2937; }
+
+    /* GSAP-driven elements — base states only, no @keyframes */
+    .arch-node { will-change: transform, opacity; }
+    .edge-fill  { will-change: width, opacity; transform-origin: left center; }
+    .routing-packet {
+      position: absolute; top: 50%; margin-top: -5px;
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #22c55e; box-shadow: 0 0 10px #22c55e, 0 0 20px #22c55e80;
+      pointer-events: none; z-index: 20; will-change: transform, opacity;
+      display: none;
+    }
+    .step-row   { will-change: transform, opacity; }
+    .why-factor { will-change: transform, opacity; }
+    .pod-card   { will-change: transform, box-shadow; }
+    .score-bar  { will-change: width; }
+    .tbl-row    { will-change: transform, opacity; }
+    .log-entry  { will-change: transform, opacity; }
+    .rationale-card { will-change: transform, opacity; }
+
+    /* Spinner — GSAP rotates this */
+    .spinner {
+      display: inline-block; width: 13px; height: 13px;
+      border: 2px solid rgba(251,191,36,0.25);
+      border-top-color: rgb(251,191,36); border-radius: 50%;
+    }
+
+    /* Shimmer gradient on active edges — background set inline */
+    .edge-shimmer {
+      background: linear-gradient(90deg, #16a34a, #4ade80, #16a34a);
+      background-size: 200% auto;
+    }
+    .edge-complete {
+      background: linear-gradient(90deg, #15803d, #22c55e);
+    }
+  </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useCallback, useRef, useMemo } = React;
+const gsap = window.gsap;
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const MODELS = [
+  { id: 'llama-3-8b',      label: 'Meta Llama 3 8B',   pool: 'llm-pool-inference', priority: 'standard' },
+  { id: 'llama-3-70b',     label: 'Meta Llama 3 70B',  pool: 'llm-pool-inference', priority: 'critical'  },
+  { id: 'mistral-7b',      label: 'Mistral 7B v0.3',   pool: 'llm-pool-inference', priority: 'standard' },
+  { id: 'llama-3-8b-code', label: 'Llama 3 8B Code',   pool: 'llm-pool-code',      priority: 'standard' },
+];
+
+const SAMPLE_PROMPTS = [
+  'Explain how Kubernetes CNI plugins manage pod networking across nodes.',
+  'Write a Python script to watch a Kubernetes namespace for pod failures.',
+  'What are the trade-offs between GitOps push vs pull deployment models?',
+  'How does vLLM implement PagedAttention for KV cache management?',
+  'Describe the architecture of a zero-downtime NGINX canary rollout.',
+];
+
+const STEPS = [
+  { id: 'received',   label: 'Request received by NGINX Gateway Fabric'  },
+  { id: 'matched',    label: 'HTTPRoute matched → InferencePool targeted' },
+  { id: 'extproc',    label: 'ext-proc gRPC call dispatched to EPP'       },
+  { id: 'scoring',    label: 'EPP evaluating all eligible endpoints'      },
+  { id: 'selected',   label: 'Best endpoint selected by EPP'              },
+  { id: 'forwarding', label: 'Request forwarded to winning pod'           },
+  { id: 'complete',   label: 'Response returned to client'                },
+];
+const STEP_IDS = STEPS.map(s => s.id);
+
+const INIT_PODS = [
+  { id: 'vllm-0', node: 'gpu-node-1', gpu: 'A100 80G', gpuUtil: 72, queue: 3,  kv: 0.45, ttft: 245, lora: ['llama-3-8b','llama-3-8b-code'],          status: 'ready'    },
+  { id: 'vllm-1', node: 'gpu-node-2', gpu: 'A100 80G', gpuUtil: 88, queue: 9,  kv: 0.11, ttft: 375, lora: ['llama-3-8b','mistral-7b'],                status: 'busy'     },
+  { id: 'vllm-2', node: 'gpu-node-3', gpu: 'H100 80G', gpuUtil: 41, queue: 1,  kv: 0.68, ttft: 162, lora: ['llama-3-8b','llama-3-70b'],               status: 'ready'    },
+  { id: 'vllm-3', node: 'gpu-node-4', gpu: 'A100 80G', gpuUtil: 96, queue: 13, kv: 0.07, ttft: 495, lora: ['mistral-7b'],                             status: 'degraded' },
+  { id: 'vllm-4', node: 'gpu-node-5', gpu: 'H100 80G', gpuUtil: 55, queue: 2,  kv: 0.53, ttft: 192, lora: ['llama-3-8b','llama-3-70b','mistral-7b'],  status: 'ready'    },
+  { id: 'vllm-5', node: 'gpu-node-6', gpu: 'A100 40G', gpuUtil: 62, queue: 5,  kv: 0.30, ttft: 288, lora: ['llama-3-8b-code'],                        status: 'ready'    },
+];
+
+// ── EPP Scoring ───────────────────────────────────────────────────────────────
+
+function calcScore(pod, modelId) {
+  if (pod.status === 'degraded') return 0;
+  let s = 100;
+  s -= pod.queue   * 4.2;
+  s += pod.kv      * 38;
+  s -= Math.max(0, pod.gpuUtil - 60) * 0.45;
+  s -= pod.ttft    / 14;
+  if (pod.lora.includes(modelId)) s += 20;
+  if (modelId === 'llama-3-70b' && pod.gpu.startsWith('H100')) s += 12;
+  return Math.max(0, Math.round(s));
+}
+
+function getFactors(pod, modelId) {
+  const queuePts = -(pod.queue * 4.2);
+  const kvPts    = pod.kv * 38;
+  const gpuPts   = -Math.max(0, pod.gpuUtil - 60) * 0.45;
+  const ttftPts  = -(pod.ttft / 14);
+  const loraPts  = pod.lora.includes(modelId) ? 20 : 0;
+  const h100Pts  = (modelId === 'llama-3-70b' && pod.gpu.startsWith('H100')) ? 12 : 0;
+  return [
+    { label: 'Base score',                                    pts: 100,      color: 'text-gray-400' },
+    { label: `Queue depth (${pod.queue} reqs)`,               pts: queuePts, color: queuePts < -10 ? 'text-red-400'    : queuePts < -4 ? 'text-yellow-400' : 'text-gray-500' },
+    { label: `KV prefix cache (${(pod.kv*100).toFixed(0)}%)`, pts: kvPts,    color: kvPts > 20     ? 'text-green-400'  : kvPts > 10 ? 'text-yellow-400' : 'text-gray-500' },
+    { label: `GPU utilisation (${Math.round(pod.gpuUtil)}%)`, pts: gpuPts,   color: gpuPts < -5    ? 'text-red-400'    : gpuPts < -1 ? 'text-yellow-400' : 'text-gray-500' },
+    { label: `TTFT estimate (${pod.ttft}ms)`,                 pts: ttftPts,  color: ttftPts < -20  ? 'text-red-400'    : ttftPts < -10 ? 'text-yellow-400' : 'text-gray-500' },
+    loraPts > 0 && { label: 'LoRA adapter match',             pts: loraPts,  color: 'text-purple-400' },
+    h100Pts > 0 && { label: 'H100 accel bonus (70B model)',   pts: h100Pts,  color: 'text-sky-400'    },
+  ].filter(Boolean);
+}
+
+// ── CR Manifests ──────────────────────────────────────────────────────────────
+
+const NODE_MANIFESTS = {
+  nginx: {
+    label: 'NGINX Gateway Fabric', color: 'text-green-400',
+    border: 'border-green-800/60', bg: 'bg-green-950/30',
+    resources: ['Gateway','HTTPRoute'],
+    yaml: `apiVersion: gateway.networking.k8s.io/v1\nkind: Gateway\nmetadata:\n  name: inference-gateway\n  namespace: default\nspec:\n  gatewayClassName: nginx\n  listeners:\n  - name: http\n    port: 80\n    protocol: HTTP\n    allowedRoutes:\n      namespaces:\n        from: Same\n---\napiVersion: gateway.networking.k8s.io/v1\nkind: HTTPRoute\nmetadata:\n  name: llm-inference-route\n  namespace: default\nspec:\n  parentRefs:\n  - name: inference-gateway\n  rules:\n  - matches:\n    - path:\n        type: PathPrefix\n        value: /v1\n    backendRefs:\n    - group: inference.networking.x-k8s.io\n      kind: InferencePool\n      name: llm-pool-inference\n      port: 8080`,
+  },
+  epp: {
+    label: 'Endpoint Picker Protocol', color: 'text-orange-400',
+    border: 'border-orange-800/60', bg: 'bg-orange-950/30',
+    resources: ['InferencePool','EPP Deployment'],
+    yaml: `apiVersion: inference.networking.x-k8s.io/v1alpha2\nkind: InferencePool\nmetadata:\n  name: llm-pool-inference\n  namespace: default\nspec:\n  targetPortNumber: 8000\n  selector:\n    matchLabels:\n      app: vllm-llama3\n  extensionRef:\n    name: epp-llm-pool\n    port: 9002\n    failureMode: FailClose\n---\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: epp-llm-pool\n  namespace: default\nspec:\n  replicas: 1\n  selector:\n    matchLabels:\n      app: epp-llm-pool\n  template:\n    metadata:\n      labels:\n        app: epp-llm-pool\n    spec:\n      containers:\n      - name: epp\n        image: us-central1-docker.pkg.dev/k8s-staging-images/gateway-api-inference-extension/epp:latest\n        args:\n        - --poolName=llm-pool-inference\n        - --poolNamespace=default\n        - --grpcPort=9002\n        - -v=3\n        ports:\n        - containerPort: 9002\n          protocol: TCP`,
+  },
+  pool: {
+    label: 'InferencePool', color: 'text-purple-400',
+    border: 'border-purple-800/60', bg: 'bg-purple-950/30',
+    resources: ['InferenceModel','InferenceObjective'],
+    yaml: `apiVersion: inference.networking.x-k8s.io/v1alpha2\nkind: InferenceModel\nmetadata:\n  name: llama-3-8b\n  namespace: default\nspec:\n  modelName: meta-llama/Meta-Llama-3-8B-Instruct\n  criticality: Standard\n  poolRef:\n    name: llm-pool-inference\n---\napiVersion: inference.networking.x-k8s.io/v1alpha2\nkind: InferenceModel\nmetadata:\n  name: llama-3-70b\n  namespace: default\nspec:\n  modelName: meta-llama/Meta-Llama-3-70B-Instruct\n  criticality: Critical\n  poolRef:\n    name: llm-pool-inference\n---\napiVersion: inference.networking.x-k8s.io/v1alpha2\nkind: InferenceObjective\nmetadata:\n  name: llm-canary-split\n  namespace: default\nspec:\n  targetRef:\n    name: llm-pool-inference\n  trafficPolicy:\n    weights:\n    - modelName: llama-3-8b\n      weight: 90\n    - modelName: llama-3-8b-v2\n      weight: 10`,
+  },
+};
+
+// ── YAML Highlighter ──────────────────────────────────────────────────────────
+
+function YamlHighlight({ yaml }) {
+  return (
+    <pre className="text-xs font-mono leading-relaxed whitespace-pre select-text">
+      {yaml.split('\n').map((line, i) => {
+        if (line.trim() === '---') return <div key={i} className="text-gray-600 my-1">---</div>;
+        const kv = line.match(/^(\s*)([\w.-]+)(\s*:\s*)(.*)$/);
+        if (kv) {
+          const [, indent, key, colon, value] = kv;
+          const depth = indent.length;
+          const keyColor = depth === 0 ? 'text-sky-300 font-semibold' : depth <= 4 ? 'text-sky-400' : 'text-sky-500';
+          const vt = value.trim();
+          const valColor = !vt ? '' :
+            vt.startsWith('"') || vt.startsWith("'") ? 'text-amber-300' :
+            /^\d/.test(vt) ? 'text-green-300' :
+            ['true','false','null'].includes(vt) ? 'text-purple-300' :
+            vt.includes('/') || vt.includes('.') ? 'text-amber-200' :
+            'text-gray-200';
+          return (
+            <div key={i}>
+              <span className="text-gray-800 select-none">{indent}</span>
+              <span className={keyColor}>{key}</span>
+              <span className="text-gray-600">{colon}</span>
+              {value && <span className={valColor}>{value}</span>}
+            </div>
+          );
+        }
+        const li = line.match(/^(\s*)-\s+(.+)$/);
+        if (li) return (
+          <div key={i}>
+            <span className="text-gray-800 select-none">{li[1]}</span>
+            <span className="text-gray-600">- </span>
+            <span className="text-amber-200">{li[2]}</span>
+          </div>
+        );
+        return <div key={i} className="text-gray-500">{line || ' '}</div>;
+      })}
+    </pre>
+  );
+}
+
+// ── Shared UI ─────────────────────────────────────────────────────────────────
+
+const Dot = ({ status }) => {
+  const c = { ready: 'bg-green-400', busy: 'bg-yellow-400', degraded: 'bg-red-500' }[status] || 'bg-gray-500';
+  return <span className={`inline-block w-2 h-2 rounded-full ${c} mr-1.5 flex-shrink-0`} />;
+};
+
+// GSAP-animated bar component
+function AnimatedBar({ val, max = 100, base = 'bg-blue-500', scoreKey }) {
+  const barRef = useRef(null);
+  const pct = Math.min(100, Math.round((val / max) * 100));
+  const col = pct > 85 ? 'bg-red-500' : pct > 65 ? 'bg-yellow-500' : base;
+
+  useEffect(() => {
+    if (!barRef.current) return;
+    gsap.to(barRef.current, { width: `${pct}%`, duration: 0.7, ease: 'power2.out' });
+  }, [pct, scoreKey]);
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="flex-1 bg-gray-700 rounded-full h-1.5 overflow-hidden">
+        <div ref={barRef} className={`h-1.5 rounded-full score-bar ${col}`} style={{ width: '0%' }} />
+      </div>
+      <span className="text-xs text-gray-400 w-7 text-right tabular-nums">{pct}%</span>
+    </div>
+  );
+}
+
+// GSAP-animated spinner
+function Spinner() {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!ref.current) return;
+    const anim = gsap.to(ref.current, { rotation: 360, duration: 0.75, repeat: -1, ease: 'none' });
+    return () => anim.kill();
+  }, []);
+  return <span ref={ref} className="spinner" style={{ display: 'inline-block' }} />;
+}
+
+// Toggle switch
+function Toggle({ checked, onChange, onColor = 'bg-gray-500' }) {
+  return (
+    <button
+      onClick={e => { e.stopPropagation(); onChange(); }}
+      className={`relative inline-flex h-4 w-7 flex-shrink-0 rounded-full border border-gray-600 transition-colors duration-200 focus:outline-none ${checked ? onColor : 'bg-gray-700'}`}
+      role="switch" aria-checked={checked}>
+      <span
+        className="absolute top-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-transform duration-200"
+        style={{ transform: checked ? 'translateX(14px)' : 'translateX(2px)' }}
+      />
+    </button>
+  );
+}
+
+// ── Architecture Flow (GSAP) ──────────────────────────────────────────────────
+
+function ArchFlow({ step, completed }) {
+  const [open, setOpen] = useState({ nginx: false, epp: false, pool: false });
+  const toggle = id => setOpen(prev => ({ ...prev, [id]: !prev[id] }));
+
+  const nodeRefs  = useRef([]);
+  const edgeRefs  = useRef([]);  // fill divs inside each edge
+  const flowRef   = useRef(null);
+  const packetRef = useRef(null);
+  const panelRef  = useRef(null);
+  const shimmerAnims = useRef([]);
+
+  const nodes = [
+    { id: 'client', label: 'Client',          sub: 'OpenAI-compat API',  border: 'border-gray-600',   text: 'text-gray-300',   bg: 'bg-gray-800/70'   },
+    { id: 'nginx',  label: 'NGINX GW Fabric', sub: 'HTTPRoute + filter', border: 'border-green-600',  text: 'text-green-300',  bg: 'bg-green-950/60'  },
+    { id: 'epp',    label: 'EPP',             sub: 'ext-proc (gRPC)',    border: 'border-orange-500', text: 'text-orange-300', bg: 'bg-orange-950/60' },
+    { id: 'pool',   label: 'InferencePool',   sub: 'vLLM pods',          border: 'border-purple-600', text: 'text-purple-300', bg: 'bg-purple-950/60' },
+  ];
+
+  const activeMap = {
+    received: ['client','nginx'], matched: ['nginx'],
+    extproc: ['nginx','epp'],    scoring: ['epp','pool'],
+    selected: ['epp','pool'],    forwarding: ['nginx','pool'],
+    complete: ['pool','client'],
+  };
+  const active    = completed ? ['client','nginx','epp','pool'] : (activeMap[step] || []);
+  const openIds   = ['nginx','epp','pool'].filter(id => open[id]);
+  const anyOpen   = openIds.length > 0;
+  const toggleColor = { nginx: 'bg-green-500', epp: 'bg-orange-500', pool: 'bg-purple-500' };
+
+  // GSAP: Animate nodes when active set changes
+  useEffect(() => {
+    nodeRefs.current.forEach((el, i) => {
+      if (!el) return;
+      const isActive = active.includes(nodes[i].id);
+      gsap.to(el, {
+        opacity: isActive ? 1 : 0.45,
+        scale:   isActive ? 1.04 : 1,
+        duration: 0.35,
+        ease: 'power2.out',
+        overwrite: 'auto',
+      });
+    });
+  }, [active.join(',')]);
+
+  // GSAP: Animate all nodes lighting up in sequence when route completes
+  useEffect(() => {
+    if (!completed) return;
+    const ctx = gsap.context(() => {
+      gsap.timeline()
+        .to(nodeRefs.current.filter(Boolean), {
+          scale: 1.06, duration: 0.25, stagger: 0.12, ease: 'power2.out'
+        })
+        .to(nodeRefs.current.filter(Boolean), {
+          scale: 1.04, duration: 0.2,  stagger: 0.12, ease: 'power2.in'
+        });
+    });
+    return () => ctx.revert();
+  }, [completed]);
+
+  // GSAP: Edge fill animation — wipe each edge when active
+  const edgeActive = (a, b) => active.includes(a) && active.includes(b);
+  const edges = [
+    [nodes[0].id, nodes[1].id],
+    [nodes[1].id, nodes[2].id],
+    [nodes[2].id, nodes[3].id],
+  ];
+
+  useEffect(() => {
+    // Kill all shimmer animations first
+    shimmerAnims.current.forEach(a => a && a.kill());
+    shimmerAnims.current = [];
+
+    edges.forEach(([a, b], i) => {
+      const el = edgeRefs.current[i];
+      if (!el) return;
+      const isActive = edgeActive(a, b);
+
+      if (completed) {
+        gsap.to(el, { scaleX: 1, opacity: 1, duration: 0.4, delay: i * 0.1, ease: 'power2.out', overwrite: 'auto' });
+        el.className = 'edge-complete h-0.5 rounded-full w-full';
+      } else if (isActive) {
+        gsap.to(el, { scaleX: 1, opacity: 1, duration: 0.35, ease: 'power2.out', overwrite: 'auto' });
+        el.className = 'edge-shimmer h-0.5 rounded-full w-full';
+        // GSAP shimmer
+        const anim = gsap.fromTo(el,
+          { backgroundPosition: '-200% center' },
+          { backgroundPosition: '200% center', duration: 1.2, repeat: -1, ease: 'none' }
+        );
+        shimmerAnims.current[i] = anim;
+      } else {
+        gsap.to(el, { scaleX: 0, opacity: 0, duration: 0.2, ease: 'power2.in', overwrite: 'auto' });
+        el.className = 'bg-gray-700 h-0.5 rounded-full w-full';
+      }
+    });
+
+    return () => shimmerAnims.current.forEach(a => a && a.kill());
+  }, [active.join(','), completed]);
+
+  // GSAP: Routing packet animation between nodes
+  useEffect(() => {
+    const pkt = packetRef.current;
+    const flow = flowRef.current;
+    if (!pkt || !flow) return;
+
+    const stepToNodeIdx = {
+      received: [0, 1], matched: [1], extproc: [1, 2],
+      scoring: [2, 3], selected: [2, 3], forwarding: [1, 3], complete: [3, 0],
+    };
+    const targets = stepToNodeIdx[step];
+    if (!targets || targets.length === 0) {
+      gsap.to(pkt, { opacity: 0, duration: 0.2 });
+      return;
+    }
+
+    const flowRect = flow.getBoundingClientRect();
+    const getNodeCenter = idx => {
+      const n = nodeRefs.current[idx];
+      if (!n) return null;
+      const r = n.getBoundingClientRect();
+      return r.left - flowRect.left + r.width / 2;
+    };
+
+    const startX = getNodeCenter(targets[0]);
+    const endX   = targets.length > 1 ? getNodeCenter(targets[targets.length - 1]) : startX;
+    if (startX === null || endX === null) return;
+
+    pkt.style.display = 'block';
+    gsap.fromTo(pkt,
+      { x: startX - 5, opacity: 0, scale: 0.5 },
+      { x: endX - 5,   opacity: 1, scale: 1, duration: 0.45, ease: 'power2.inOut',
+        onComplete: () => {
+          gsap.to(pkt, { opacity: 0, scale: 0.3, duration: 0.25, delay: 0.15 });
+        }
+      }
+    );
+  }, [step]);
+
+  // GSAP: Manifest panel slide in/out
+  useEffect(() => {
+    if (!panelRef.current) return;
+    gsap.to(panelRef.current, {
+      width: anyOpen ? '26rem' : '0rem',
+      opacity: anyOpen ? 1 : 0,
+      duration: 0.3,
+      ease: 'power2.inOut',
+    });
+  }, [anyOpen]);
+
+  // GSAP: Header pulse dot
+  const dotRef = useRef(null);
+  useEffect(() => {
+    if (!dotRef.current) return;
+    let anim;
+    if (!completed) {
+      anim = gsap.to(dotRef.current, { opacity: 0.3, duration: 0.9, yoyo: true, repeat: -1, ease: 'sine.inOut' });
+    } else {
+      gsap.killTweensOf(dotRef.current);
+      gsap.to(dotRef.current, { opacity: 1, duration: 0.3 });
+    }
+    return () => anim && anim.kill();
+  }, [completed]);
+
+  return (
+    <div className="bg-gray-900/80 border border-gray-700/60 rounded-2xl p-5 mb-5">
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-4">
+        <div ref={dotRef} className={`w-2 h-2 rounded-full ${completed ? 'bg-green-400' : 'bg-green-500'}`} />
+        <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Request Pipeline</span>
+        {completed && <span className="ml-auto text-xs text-green-600 font-mono">route complete ✓</span>}
+        {!completed && !anyOpen && <span className="ml-auto text-xs text-gray-700 italic">toggle CR manifest on any node →</span>}
+        {anyOpen && (
+          <span className="ml-auto text-xs text-gray-600">
+            {openIds.map(id => NODE_MANIFESTS[id].resources.join(' + ')).join(' · ')}
+          </span>
+        )}
+      </div>
+
+      {/* Flow diagram */}
+      <div className="flex gap-4 items-stretch">
+        {/* Nodes row — position: relative so the packet can sit inside */}
+        <div ref={flowRef} className="flex items-center gap-2 flex-1 min-w-0" style={{ position: 'relative' }}>
+          {/* Routing packet */}
+          <div ref={packetRef} className="routing-packet" />
+
+          {nodes.map((n, i) => {
+            const hasManifest = !!NODE_MANIFESTS[n.id];
+            const isOn        = hasManifest && open[n.id];
+            const m           = hasManifest ? NODE_MANIFESTS[n.id] : null;
+            return (
+              <React.Fragment key={n.id}>
+                <div
+                  ref={el => nodeRefs.current[i] = el}
+                  className={`arch-node flex-1 border-2 rounded-xl px-4 py-3
+                    ${n.border} ${n.bg}
+                    ${completed ? 'ring-1 ring-green-700/30' : ''}
+                    ${isOn ? 'ring-2 brightness-125' : ''}`}
+                  style={{ opacity: 0.45 }}>
+                  <div className={`text-sm font-bold ${n.text}`}>{n.label}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">{n.sub}</div>
+                  {hasManifest && (
+                    <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-gray-700/40">
+                      <span className={`text-xs font-mono transition-colors duration-200 ${isOn ? m.color : 'text-gray-700'}`}>
+                        CR manifest
+                      </span>
+                      <Toggle checked={isOn} onChange={() => toggle(n.id)} onColor={toggleColor[n.id]} />
+                    </div>
+                  )}
+                </div>
+
+                {i < nodes.length - 1 && (
+                  <div className="flex-shrink-0 w-10 flex flex-col items-center gap-0.5">
+                    <div className="w-full h-0.5 bg-gray-700/50 rounded-full overflow-hidden" style={{ position: 'relative' }}>
+                      <div
+                        ref={el => edgeRefs.current[i] = el}
+                        className="bg-gray-700 h-0.5 rounded-full w-full"
+                        style={{ transformOrigin: 'left center', scaleX: 0, opacity: 0 }}
+                      />
+                    </div>
+                    <span className="text-gray-600 text-xs">▶</span>
+                  </div>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </div>
+
+        {/* CR Manifest panel — GSAP controlled width */}
+        <div
+          ref={panelRef}
+          className="flex-shrink-0 overflow-hidden"
+          style={{ width: '0rem', opacity: 0 }}>
+          {anyOpen && (
+            <div className="border border-gray-700/50 rounded-xl overflow-hidden flex flex-col"
+              style={{ backgroundColor: '#080f18', minWidth: '26rem', maxHeight: '260px' }}>
+              <div className="overflow-y-auto flex-1">
+                {openIds.map((nodeId, idx) => {
+                  const m = NODE_MANIFESTS[nodeId];
+                  return (
+                    <div key={nodeId} className={idx > 0 ? 'border-t border-gray-800' : ''}>
+                      <div className={`px-4 py-2 flex items-center justify-between sticky top-0 z-10 ${m.bg} border-b ${m.border}`}
+                        style={{ backgroundColor: '#080f18' }}>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs font-black uppercase tracking-wider ${m.color}`}>{m.label}</span>
+                          <div className="flex gap-1">
+                            {m.resources.map(r => (
+                              <span key={r} className={`text-xs font-mono border px-1.5 py-0.5 rounded ${m.border} ${m.color} opacity-60`}>{r}</span>
+                            ))}
+                          </div>
+                        </div>
+                        <button onClick={() => toggle(nodeId)} className="text-gray-600 hover:text-gray-400 transition-colors text-sm leading-none ml-2">✕</button>
+                      </div>
+                      <div className="p-4"><YamlHighlight yaml={m.yaml} /></div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* K8s resource badges */}
+      <div className="flex flex-wrap gap-2 mt-4">
+        {[
+          ['InferenceModel',    'text-sky-400 border-sky-800 bg-sky-950/50',         'routing intent & priority'],
+          ['InferencePool',     'text-purple-400 border-purple-800 bg-purple-950/50', 'pod group + EPP reference'],
+          ['HTTPRoute',         'text-green-400 border-green-800 bg-green-950/50',    'path → InferencePool match'],
+          ['InferenceObjective','text-amber-400 border-amber-800 bg-amber-950/50',    'traffic split / canary weight'],
+          ['ext-proc filter',   'text-orange-400 border-orange-800 bg-orange-950/50', 'gRPC hook to EPP per-request'],
+        ].map(([label, cls, desc]) => (
+          <span key={label} className={`text-xs border px-2.5 py-1 rounded-lg ${cls}`}>
+            <span className="font-mono font-bold">{label}</span>
+            <span className="opacity-50 ml-1.5">{desc}</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Step Tracker (GSAP) ───────────────────────────────────────────────────────
+
+function StepTracker({ step, winner, completed, lastRoute }) {
+  const idx          = completed ? STEPS.length : STEP_IDS.indexOf(step);
+  const stepRefs     = useRef([]);
+  const whyRef       = useRef(null);
+  const factorRefs   = useRef([]);
+  const prevStepIdx  = useRef(-1);
+
+  // GSAP: slide-in each newly activated / completed step row
+  useEffect(() => {
+    const curr = STEP_IDS.indexOf(step);
+    if (curr > prevStepIdx.current && curr >= 0) {
+      const el = stepRefs.current[curr];
+      if (el) {
+        gsap.fromTo(el,
+          { x: -12, opacity: 0 },
+          { x: 0,    opacity: 1, duration: 0.3, ease: 'power2.out' }
+        );
+      }
+    }
+    prevStepIdx.current = curr;
+  }, [step]);
+
+  // GSAP: pop check marks as steps complete
+  useEffect(() => {
+    if (completed) {
+      stepRefs.current.forEach((el, i) => {
+        if (!el) return;
+        const check = el.querySelector('.check-icon');
+        if (check) {
+          gsap.fromTo(check,
+            { scale: 0.4, opacity: 0 },
+            { scale: 1, opacity: 1, duration: 0.4, delay: i * 0.06, ease: 'back.out(2)' }
+          );
+        }
+      });
+    }
+  }, [completed]);
+
+  // GSAP: Why panel + factor bars stagger on mount
+  useEffect(() => {
+    if (!whyRef.current) return;
+    gsap.fromTo(whyRef.current,
+      { opacity: 0, y: -8 },
+      { opacity: 1, y: 0,  duration: 0.35, ease: 'power2.out' }
+    );
+    const bars = whyRef.current.querySelectorAll('.why-bar');
+    gsap.fromTo(bars,
+      { scaleX: 0 },
+      { scaleX: 1, duration: 0.5, stagger: 0.07, ease: 'power2.out', transformOrigin: 'left center' }
+    );
+    const rows = factorRefs.current.filter(Boolean);
+    gsap.fromTo(rows,
+      { opacity: 0, x: -8 },
+      { opacity: 1, x: 0,  duration: 0.25, stagger: 0.05, ease: 'power2.out' }
+    );
+  }, [completed, lastRoute?.winner]);
+
+  // Inline Why? data
+  let inlineFactors = null, runnerUp = null, winScore = null;
+  if (completed && lastRoute) {
+    const { frozenPods, scores, model, winner: w } = lastRoute;
+    const winPod = frozenPods.find(p => p.id === w);
+    if (winPod) {
+      inlineFactors = getFactors(winPod, model).filter(f => f.label !== 'Base score');
+      winScore = scores[w];
+      runnerUp = [...frozenPods]
+        .filter(p => p.status !== 'degraded' && p.id !== w)
+        .sort((a, b) => scores[b.id] - scores[a.id])[0];
+    }
+  }
+
+  return (
+    <div className="space-y-1">
+      {STEPS.map((s, i) => {
+        const done    = i < idx;
+        const active  = !completed && i === idx;
+        const pending = !completed && i > idx;
+        const showWhy = completed && s.id === 'selected' && !!inlineFactors;
+        return (
+          <React.Fragment key={s.id}>
+            <div
+              ref={el => stepRefs.current[i] = el}
+              className={`step-row flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs transition-colors duration-300
+                ${active   ? 'bg-amber-950/50 border border-amber-700/40 text-amber-200' : ''}
+                ${done && !completed ? 'bg-gray-800/40 border border-gray-700/20 text-gray-500' : ''}
+                ${done && completed  ? 'bg-green-950/20 border border-green-800/20 text-green-300' : ''}
+                ${pending  ? 'border border-transparent text-gray-700 opacity-30' : ''}`}>
+              <span className="flex-shrink-0 w-4 text-center">
+                {done
+                  ? <span className="check-icon inline-block">✅</span>
+                  : active ? <Spinner /> : '○'}
+              </span>
+              <span className={`${done && !completed ? 'line-through opacity-70' : ''} ${active ? 'font-medium' : ''}`}>
+                {s.label}
+                {s.id === 'selected' && winner && done ? (
+                  <span className={`ml-1.5 font-mono font-bold ${completed ? 'text-green-400' : 'text-amber-300'}`}>
+                    → {winner}
+                  </span>
+                ) : null}
+              </span>
+            </div>
+
+            {showWhy && (
+              <div ref={whyRef} className="ml-7 mr-1 mb-1 rounded-lg overflow-hidden border border-green-800/30 bg-gray-800/50" style={{ opacity: 0 }}>
+                <div className="flex items-center justify-between px-3 py-1.5 bg-green-950/40 border-b border-green-900/25">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-green-500 text-xs">★</span>
+                    <span className="text-xs font-black text-green-300">Why {lastRoute.winner}?</span>
+                    <span className="text-xs text-gray-600 font-mono">
+                      {lastRoute.frozenPods.find(p => p.id === lastRoute.winner)?.gpu}
+                    </span>
+                  </div>
+                  <span className="text-green-400 font-black font-mono text-sm">{winScore} pts</span>
+                </div>
+                <div className="px-3 py-2 space-y-1.5">
+                  {inlineFactors.map((f, fi) => (
+                    <div key={fi} ref={el => factorRefs.current[fi] = el}
+                      className="why-factor flex items-center justify-between text-xs gap-2" style={{ opacity: 0 }}>
+                      <span className="text-gray-500 flex-1 min-w-0 truncate">
+                        <span className={`mr-1 ${f.pts > 0 ? 'text-green-600' : 'text-red-800'}`}>{f.pts > 0 ? '▲' : '▼'}</span>
+                        {f.label}
+                      </span>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <div className="w-12 bg-gray-700 rounded-full h-1 overflow-hidden">
+                          <div
+                            className={`why-bar h-1 rounded-full ${f.pts > 0 ? 'bg-green-600' : 'bg-red-700'}`}
+                            style={{ width: `${Math.min(100, Math.abs(f.pts) / 38 * 100)}%`, transformOrigin: 'left', scaleX: 0 }}
+                          />
+                        </div>
+                        <span className={`font-mono font-bold w-12 text-right tabular-nums ${f.color}`}>
+                          {f.pts > 0 ? '+' : ''}{f.pts.toFixed(1)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="border-t border-gray-700/30">
+                  <div className="flex items-center justify-between px-3 py-1.5 bg-green-950/20 text-xs">
+                    <span className="text-green-400 font-bold">Final score</span>
+                    <span className="text-green-400 font-black font-mono">{winScore} pts</span>
+                  </div>
+                  {runnerUp && (
+                    <div className="flex items-center justify-between px-3 py-1.5 border-t border-gray-700/20 text-xs">
+                      <span className="text-gray-600">Runner-up: <span className="font-mono text-gray-400">{runnerUp.id}</span></span>
+                      <span className="font-mono text-gray-500">
+                        {lastRoute.scores[runnerUp.id]} pts
+                        <span className="text-red-500 ml-1.5">−{winScore - lastRoute.scores[runnerUp.id]}</span>
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Decision Rationale (GSAP) ─────────────────────────────────────────────────
+
+function DecisionRationale({ lastRoute }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!ref.current || !lastRoute) return;
+    gsap.fromTo(ref.current,
+      { opacity: 0, y: 14 },
+      { opacity: 1, y: 0, duration: 0.4, ease: 'power2.out' }
+    );
+    const bars = ref.current.querySelectorAll('.factor-bar');
+    gsap.fromTo(bars,
+      { scaleX: 0 },
+      { scaleX: 1, duration: 0.55, stagger: 0.06, ease: 'power2.out',
+        delay: 0.2, transformOrigin: 'left center' }
+    );
+  }, [lastRoute?.winner, lastRoute?.time]);
+
+  if (!lastRoute) return null;
+  const { winner, scores, frozenPods, model, prompt, time } = lastRoute;
+  const winPod   = frozenPods.find(p => p.id === winner);
+  const winScore = scores[winner];
+  if (!winPod) return null;
+
+  const factors  = getFactors(winPod, model);
+  const runnerUp = [...frozenPods].filter(p => p.status !== 'degraded' && p.id !== winner)
+    .sort((a, b) => scores[b.id] - scores[a.id])[0];
+  const margin   = runnerUp ? winScore - scores[runnerUp.id] : null;
+  const topFactor = [...factors].filter(f => f.pts > 0 && f.label !== 'Base score').sort((a,b) => b.pts - a.pts)[0];
+
+  return (
+    <div ref={ref} className="rationale-card mt-4 pt-4 border-t border-gray-700/40" style={{ opacity: 0 }}>
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Decision Rationale</span>
+        <span className="text-xs text-gray-600 font-mono">{time}</span>
+      </div>
+
+      <div className="mb-3 px-3 py-2 bg-gray-800/50 rounded-lg border border-gray-700/30">
+        <div className="text-xs text-gray-600 mb-0.5">Prompt</div>
+        <div className="text-xs text-gray-400 italic truncate">"{prompt}"</div>
+        <div className="text-xs text-sky-500 font-mono mt-1">model: {model}</div>
+      </div>
+
+      <div className="flex items-center justify-between px-3 py-2 mb-3 bg-green-950/30 border border-green-800/30 rounded-lg">
+        <div className="flex items-center gap-2">
+          <span className="text-green-400 text-base">★</span>
+          <div>
+            <span className="font-mono font-black text-green-300 text-sm">{winner}</span>
+            <span className="text-gray-600 text-xs ml-2">{winPod.gpu} · {winPod.node}</span>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-green-400 font-black font-mono text-lg">{winScore}</div>
+          <div className="text-xs text-gray-600">pts</div>
+        </div>
+      </div>
+
+      <div className="space-y-0.5 mb-3">
+        {factors.map((f, i) => {
+          const isTop = topFactor && f.label === topFactor.label;
+          return (
+            <div key={i} className={`flex items-center justify-between px-3 py-1.5 rounded text-xs
+              ${f.label === 'Base score' ? 'opacity-50' : ''}
+              ${isTop ? 'bg-green-950/20 border border-green-900/30' : 'hover:bg-gray-800/30'}`}>
+              <span className="text-gray-500 flex items-center gap-1.5">
+                {isTop && <span className="text-green-500 text-xs">▲</span>}
+                {f.label}
+              </span>
+              <div className="flex items-center gap-2">
+                <div className="w-16 bg-gray-800 rounded-full h-1 overflow-hidden">
+                  <div
+                    className={`factor-bar h-1 rounded-full ${f.pts > 0 ? 'bg-green-600' : 'bg-red-700'}`}
+                    style={{ width: `${Math.min(100, Math.abs(f.pts) / 38 * 100)}%`, transformOrigin: 'left', scaleX: 0 }}
+                  />
+                </div>
+                <span className={`font-mono font-bold w-14 text-right tabular-nums ${f.color}`}>
+                  {f.pts > 0 ? '+' : ''}{f.pts.toFixed(1)}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+        <div className="flex items-center justify-between px-3 py-2 mt-1 border-t border-gray-700/40 bg-gray-800/30 rounded-b-lg">
+          <span className="text-gray-300 font-bold text-xs">Final score</span>
+          <span className="text-green-400 font-black font-mono text-sm">{winScore} pts</span>
+        </div>
+      </div>
+
+      {runnerUp && (
+        <div className="px-3 py-2 bg-gray-800/30 border border-gray-700/30 rounded-lg text-xs flex items-center justify-between">
+          <div>
+            <span className="text-gray-500">Runner-up </span>
+            <span className="font-mono text-gray-300 font-bold">{runnerUp.id}</span>
+            <span className="text-gray-600 ml-1.5">{runnerUp.gpu}</span>
+          </div>
+          <div className="text-right">
+            <span className="text-gray-400 font-mono">{scores[runnerUp.id]} pts</span>
+            <span className="text-red-400 font-mono ml-1.5">(−{margin})</span>
+          </div>
+        </div>
+      )}
+      {topFactor && (
+        <div className="mt-2 px-3 py-1.5 bg-gray-900/60 border border-gray-700/20 rounded-lg text-xs text-gray-500 italic">
+          Primary factor: <span className="text-green-400 not-italic font-medium">{topFactor.label}</span>
+          {' '}contributed <span className="text-green-400 font-mono not-italic">+{topFactor.pts.toFixed(1)} pts</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Pod Card (GSAP) ───────────────────────────────────────────────────────────
+
+function PodCard({ pod, sc, isWinner, showScore, isSnapshot, animKey }) {
+  const cardRef = useRef(null);
+  const glowAnim = useRef(null);
+
+  const ring = isWinner
+    ? 'border-green-400 shadow-xl shadow-green-500/20 scale-105'
+    : pod.status === 'degraded'
+    ? 'border-red-800/60 opacity-60'
+    : 'border-gray-700/70 hover:border-gray-600';
+
+  // GSAP: Winner celebration + continuous glow pulse
+  useEffect(() => {
+    if (!cardRef.current) return;
+    if (isWinner) {
+      // Stop any existing glow
+      glowAnim.current && glowAnim.current.kill();
+      // Bounce in
+      gsap.timeline()
+        .fromTo(cardRef.current, { scale: 1.05 }, { scale: 1.08, duration: 0.18, ease: 'power2.out' })
+        .to(cardRef.current, { scale: 1.05, duration: 0.15, ease: 'power2.in' });
+      // Continuous glow pulse via boxShadow
+      glowAnim.current = gsap.to(cardRef.current, {
+        boxShadow: '0 0 32px rgba(74,222,128,0.6), 0 0 64px rgba(74,222,128,0.25)',
+        duration: 1.2,
+        yoyo: true,
+        repeat: -1,
+        ease: 'sine.inOut',
+      });
+    } else {
+      glowAnim.current && glowAnim.current.kill();
+      gsap.to(cardRef.current, { boxShadow: 'none', duration: 0.3 });
+    }
+    return () => glowAnim.current && glowAnim.current.kill();
+  }, [isWinner]);
+
+  // GSAP: Entrance animation when animKey changes (scoring starts)
+  const prevKey = useRef(null);
+  useEffect(() => {
+    if (!cardRef.current || animKey === prevKey.current) return;
+    prevKey.current = animKey;
+    gsap.fromTo(cardRef.current,
+      { opacity: 0, y: 10 },
+      { opacity: 1, y: 0, duration: 0.4, ease: 'power2.out' }
+    );
+  }, [animKey]);
+
+  return (
+    <div ref={cardRef} className={`pod-card relative rounded-xl border-2 bg-gray-800/70 p-4 transition-colors duration-300 ${ring}`}>
+      {isWinner && (
+        <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-green-500 text-black text-xs font-black px-3 py-0.5 rounded-full whitespace-nowrap z-10">
+          ★ SELECTED
+        </div>
+      )}
+      <div className="flex items-start justify-between mb-3">
+        <div>
+          <div className="flex items-center">
+            <Dot status={pod.status} />
+            <span className="font-mono text-sm font-bold text-gray-100">{pod.id}</span>
+          </div>
+          <div className="text-xs text-gray-600 mt-0.5 ml-3.5">{pod.node}</div>
+        </div>
+        <div className="text-right">
+          <div className="font-mono text-xs bg-purple-900/50 text-purple-300 border border-purple-800/50 px-2 py-0.5 rounded">{pod.gpu}</div>
+          {showScore && sc !== undefined && (
+            <div className={`text-sm font-black mt-1.5 ${sc > 70 ? 'text-green-400' : sc > 40 ? 'text-yellow-400' : 'text-red-400'}`}>
+              {pod.status === 'degraded' ? '—' : `${sc} pts`}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="space-y-2.5">
+        <div>
+          <div className="flex justify-between text-xs mb-1">
+            <span className="text-gray-500">GPU Util</span>
+            <span className="text-gray-300 font-mono">{Math.round(pod.gpuUtil)}%</span>
+          </div>
+          <AnimatedBar val={pod.gpuUtil} base="bg-violet-500" scoreKey={`${pod.id}-gpu-${animKey}`} />
+        </div>
+        <div className="grid grid-cols-3 gap-x-2 text-xs mt-1">
+          <div>
+            <div className="text-gray-600 mb-0.5">Queue</div>
+            <div className={`font-mono font-bold ${pod.queue > 8 ? 'text-red-400' : pod.queue > 4 ? 'text-yellow-400' : 'text-green-400'}`}>{pod.queue}</div>
+          </div>
+          <div>
+            <div className="text-gray-600 mb-0.5">KV Cache</div>
+            <div className={`font-mono font-bold ${pod.kv > 0.5 ? 'text-green-400' : pod.kv > 0.3 ? 'text-yellow-400' : 'text-gray-500'}`}>
+              {(pod.kv * 100).toFixed(0)}%
+            </div>
+          </div>
+          <div>
+            <div className="text-gray-600 mb-0.5">TTFT</div>
+            <div className="font-mono font-bold text-sky-300">{Math.round(pod.ttft)}ms</div>
+          </div>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-1">
+        {pod.lora.map(a => (
+          <span key={a} className="text-xs bg-purple-900/40 text-purple-300 border border-purple-700/40 px-1.5 py-0.5 rounded font-mono leading-none">{a}</span>
+        ))}
+      </div>
+      {pod.status !== 'ready' && (
+        <div className="absolute top-3 right-3">
+          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${pod.status === 'busy' ? 'bg-yellow-900/50 text-yellow-400' : 'bg-red-900/50 text-red-400'}`}>
+            {pod.status}
+          </span>
+        </div>
+      )}
+      {isSnapshot && <div className="absolute bottom-2 right-2 text-gray-700 text-xs font-mono">📸</div>}
+    </div>
+  );
+}
+
+// ── Scoring Table (GSAP) ──────────────────────────────────────────────────────
+
+function ScoringTable({ pods, scores, modelId, winner, snapshot, snapshotTime }) {
+  const tableRef = useRef(null);
+  const rowRefs  = useRef([]);
+
+  // GSAP: Table entrance + row stagger
+  useEffect(() => {
+    if (!tableRef.current) return;
+    gsap.fromTo(tableRef.current,
+      { opacity: 0, y: 10 },
+      { opacity: 1, y: 0, duration: 0.4, ease: 'power2.out' }
+    );
+  }, []);
+
+  useEffect(() => {
+    const rows = rowRefs.current.filter(Boolean);
+    if (!rows.length) return;
+    gsap.fromTo(rows,
+      { opacity: 0, x: -8 },
+      { opacity: 1, x: 0, duration: 0.3, stagger: 0.06, ease: 'power2.out' }
+    );
+  }, [winner, snapshot]);
+
+  // GSAP: Score bars in table
+  useEffect(() => {
+    const bars = tableRef.current?.querySelectorAll('.tbl-score-bar');
+    if (!bars) return;
+    bars.forEach(bar => {
+      const target = bar.dataset.target || '0';
+      gsap.to(bar, { width: `${target}%`, duration: 0.7, ease: 'power2.out', delay: Math.random() * 0.2 });
+    });
+  }, [scores, winner]);
+
+  const sorted = [...pods].sort((a, b) => (scores[b.id] || 0) - (scores[a.id] || 0));
+
+  return (
+    <div ref={tableRef} className={`rounded-xl overflow-hidden border ${snapshot ? 'border-green-900/50 bg-gray-900/90' : 'border-orange-900/40 bg-gray-900/90'}`} style={{ opacity: 0 }}>
+      <div className={`px-5 py-3 border-b flex items-center gap-3 ${snapshot ? 'bg-green-950/30 border-green-900/30' : 'bg-orange-950/50 border-orange-900/40'}`}>
+        <span className={`text-xs font-black uppercase tracking-widest ${snapshot ? 'text-green-300' : 'text-orange-300'}`}>EPP Scoring Engine</span>
+        <span className="text-xs text-gray-500">
+          → model: <span className={`font-mono ${snapshot ? 'text-green-200' : 'text-orange-200'}`}>{modelId}</span>
+        </span>
+        <span className="ml-auto flex items-center gap-1.5 text-xs">
+          {snapshot ? (
+            <span className="flex items-center gap-1.5 bg-green-900/30 border border-green-800/40 text-green-400 px-2.5 py-0.5 rounded-full font-mono">
+              📸 Snapshot · {snapshotTime}
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5 text-gray-600">
+              <ScorePulseDot /> scoring live…
+            </span>
+          )}
+        </span>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-gray-700/70 text-gray-500">
+              <th className="text-left px-4 py-2.5">Endpoint</th>
+              <th className="text-center px-3 py-2.5">GPU</th>
+              <th className="text-center px-3 py-2.5">Queue ↓</th>
+              <th className="text-center px-3 py-2.5">KV Cache ↑</th>
+              <th className="text-center px-3 py-2.5">GPU% ↓</th>
+              <th className="text-center px-3 py-2.5">TTFT ↓</th>
+              <th className="text-center px-3 py-2.5">LoRA ✓</th>
+              <th className="text-right px-4 py-2.5">Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((pod, ri) => {
+              const sc    = scores[pod.id] ?? 0;
+              const isWin = pod.id === winner;
+              const hasLora = pod.lora.includes(modelId);
+              return (
+                <tr ref={el => rowRefs.current[ri] = el} key={pod.id}
+                  className={`tbl-row border-b border-gray-800/50
+                    ${isWin ? 'bg-green-950/30' : pod.status === 'degraded' ? 'opacity-30' : 'hover:bg-gray-800/30'}`}
+                  style={{ opacity: 0 }}>
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center gap-1.5">
+                      <Dot status={pod.status} />
+                      <span className={`font-mono font-bold ${isWin ? 'text-green-300' : 'text-gray-200'}`}>{pod.id}</span>
+                      {isWin && <span className="text-green-400">★</span>}
+                    </div>
+                  </td>
+                  <td className="text-center px-3 py-2.5 font-mono text-purple-300">{pod.gpu}</td>
+                  <td className={`text-center px-3 py-2.5 font-mono font-bold ${pod.queue > 8 ? 'text-red-400' : pod.queue > 4 ? 'text-yellow-400' : 'text-green-400'}`}>{pod.queue}</td>
+                  <td className={`text-center px-3 py-2.5 font-mono font-bold ${pod.kv > 0.5 ? 'text-green-400' : pod.kv > 0.3 ? 'text-yellow-400' : 'text-gray-500'}`}>{(pod.kv*100).toFixed(0)}%</td>
+                  <td className={`text-center px-3 py-2.5 font-mono ${pod.gpuUtil > 85 ? 'text-red-400' : pod.gpuUtil > 65 ? 'text-yellow-400' : 'text-gray-300'}`}>{Math.round(pod.gpuUtil)}%</td>
+                  <td className="text-center px-3 py-2.5 font-mono text-sky-300">{Math.round(pod.ttft)}ms</td>
+                  <td className="text-center px-3 py-2.5">
+                    {hasLora ? <span className="text-green-400 font-bold text-sm">✓</span> : <span className="text-gray-700">—</span>}
+                  </td>
+                  <td className="text-right px-4 py-2.5">
+                    <div className="flex items-center justify-end gap-2">
+                      <div className="w-24 bg-gray-700/60 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className={`tbl-score-bar h-1.5 rounded-full ${sc > 70 ? 'bg-green-500' : sc > 40 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                          data-target={sc}
+                          style={{ width: '0%' }}
+                        />
+                      </div>
+                      <span className={`font-black font-mono w-8 text-right tabular-nums ${sc > 70 ? 'text-green-400' : sc > 40 ? 'text-yellow-400' : 'text-red-400'}`}>
+                        {pod.status === 'degraded' ? '0' : sc}
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="px-4 py-2.5 bg-gray-900/60 border-t border-gray-800 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
+        <span><span className="text-gray-500 font-medium">Queue ↓</span> −4.2 pts/req</span>
+        <span><span className="text-gray-500 font-medium">KV Cache ↑</span> +38 pts max</span>
+        <span><span className="text-gray-500 font-medium">GPU% ↓</span> −0.45 pts over 60%</span>
+        <span><span className="text-gray-500 font-medium">TTFT ↓</span> −1 pt per 14ms</span>
+        <span><span className="text-gray-500 font-medium">LoRA match</span> +20 pts</span>
+        <span><span className="text-gray-500 font-medium">H100 + 70B</span> +12 pts</span>
+        <span><span className="text-gray-500 font-medium">Degraded</span> = excluded</span>
+        {snapshot && <span className="ml-auto text-green-900">metrics frozen at decision time</span>}
+      </div>
+    </div>
+  );
+}
+
+// GSAP pulse dot for scoring live indicator
+function ScorePulseDot() {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!ref.current) return;
+    const anim = gsap.to(ref.current, { opacity: 0.2, duration: 0.6, yoyo: true, repeat: -1, ease: 'sine.inOut' });
+    return () => anim.kill();
+  }, []);
+  return <span ref={ref} className="w-1.5 h-1.5 rounded-full bg-orange-500 inline-block" />;
+}
+
+// ── EPP Info ──────────────────────────────────────────────────────────────────
+
+function EPPInfo() {
+  return (
+    <div className="bg-gray-900/60 border border-gray-700/40 rounded-xl p-4 text-xs space-y-3">
+      <div className="font-bold text-gray-300 text-sm">How EPP Works</div>
+      <div className="space-y-2.5 text-gray-500 leading-relaxed">
+        {[
+          ['text-orange-400', '1. ext-proc intercept',    'NGINX GW Fabric intercepts every inference request via an Envoy External Processing (ext-proc) gRPC filter before routing.'],
+          ['text-sky-400',    '2. Model name extraction', 'The Body-Based Router parses the OpenAI-compatible request body to extract the model field — no client changes needed.'],
+          ['text-purple-400', '3. InferencePool lookup',  'EPP resolves which InferencePool owns that model via InferenceObjective CRDs and filters eligible (Ready) pods.'],
+          ['text-green-400',  '4. KV-cache aware scoring','Each pod is scored on live metrics: queue depth, KV prefix cache hit rate, GPU utilisation, TTFT estimate, and LoRA adapter availability.'],
+          ['text-amber-400',  '5. Endpoint hint returned','EPP returns the winning pod\'s address as an ext-proc header. NGINX forwards the request directly — bypassing round-robin.'],
+        ].map(([cls, title, body]) => (
+          <div key={title}>
+            <span className={`${cls} font-semibold`}>{title}</span>
+            <p className="mt-0.5">{body}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Routing Log (GSAP) ────────────────────────────────────────────────────────
+
+function RoutingLog({ entries }) {
+  const firstEntryRef = useRef(null);
+  const prevLen = useRef(0);
+
+  useEffect(() => {
+    if (entries.length > prevLen.current && firstEntryRef.current) {
+      gsap.fromTo(firstEntryRef.current,
+        { opacity: 0, y: -12 },
+        { opacity: 1, y: 0, duration: 0.35, ease: 'power2.out' }
+      );
+    }
+    prevLen.current = entries.length;
+  }, [entries.length]);
+
+  return (
+    <div className="bg-gray-900/80 border border-gray-700/60 rounded-xl overflow-hidden">
+      <div className="px-4 py-2.5 border-b border-gray-700/60 flex items-center gap-2">
+        <ScorePulseDot />
+        <span className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Routing Log</span>
+        <span className="ml-auto text-xs text-gray-700">{entries.length} events</span>
+      </div>
+      <div className="max-h-44 overflow-y-auto font-mono">
+        {entries.length === 0 ? (
+          <div className="text-xs text-gray-700 px-4 py-4 italic font-sans">No routing events yet — send a prompt to begin.</div>
+        ) : entries.map((e, i) => (
+          <div
+            key={i}
+            ref={i === 0 ? firstEntryRef : null}
+            className={`log-entry flex items-baseline gap-3 px-4 py-2 border-b border-gray-800/40 text-xs hover:bg-gray-800/30 transition-colors`}>
+            <span className="text-gray-600 flex-shrink-0">{e.time}</span>
+            <span className="text-sky-400 flex-shrink-0">{e.model}</span>
+            <span className="text-gray-600">→</span>
+            <span className="text-green-400 font-bold flex-shrink-0">{e.pod}</span>
+            <span className="text-orange-300 flex-shrink-0">score:{e.score}</span>
+            <span className="text-gray-500 truncate">{e.reason}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── App ───────────────────────────────────────────────────────────────────────
+
+function App() {
+  const [pods,      setPods]      = useState(INIT_PODS.map(p => ({...p})));
+  const [model,     setModel]     = useState('llama-3-8b');
+  const [prompt,    setPrompt]    = useState(SAMPLE_PROMPTS[0]);
+  const [step,      setStep]      = useState('idle');
+  const [winner,    setWinner]    = useState(null);
+  const [scores,    setScores]    = useState({});
+  const [showTbl,   setShowTbl]   = useState(false);
+  const [log,       setLog]       = useState([]);
+  const [running,   setRunning]   = useState(false);
+  const [lastRoute, setLastRoute] = useState(null);
+  const [podAnimKey,setPodAnimKey]= useState(0);  // triggers pod entrance anim
+
+  const headerRef = useRef(null);
+
+  // GSAP: Header entrance on mount
+  useEffect(() => {
+    if (!headerRef.current) return;
+    const ctx = gsap.context(() => {
+      gsap.fromTo('.tag-badge',
+        { opacity: 0, y: -8 },
+        { opacity: 1, y: 0, duration: 0.4, stagger: 0.07, delay: 0.3, ease: 'power2.out' }
+      );
+    }, headerRef);
+    return () => ctx.revert();
+  }, []);
+
+  const isCompleted   = step === 'idle' && !!lastRoute;
+  const displayScores = isCompleted ? lastRoute.scores : scores;
+  const displayPods   = isCompleted ? lastRoute.frozenPods : pods;
+  const displayWinner = isCompleted ? lastRoute.winner : winner;
+  const showPipeline  = step !== 'idle' || !!lastRoute;
+  const showScoreTable= showTbl || !!lastRoute;
+
+  // Metric drift
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (!running) {
+        setPods(prev => prev.map(p => ({
+          ...p,
+          gpuUtil: Math.max(10, Math.min(98, p.gpuUtil + (Math.random() - 0.5) * 5)),
+          queue:   Math.max(0,  Math.min(15, p.queue   + Math.round((Math.random() - 0.5) * 1.5))),
+          kv:      Math.max(0,  Math.min(1,  p.kv      + (Math.random() - 0.5) * 0.06)),
+          ttft:    Math.max(80, Math.min(600,p.ttft    + Math.round((Math.random() - 0.5) * 18))),
+        })));
+      }
+    }, 2200);
+    return () => clearInterval(id);
+  }, [running]);
+
+  const delay = ms => new Promise(r => setTimeout(r, ms));
+
+  const sendPrompt = useCallback(async () => {
+    if (running || !prompt.trim()) return;
+    setLastRoute(null);
+    setRunning(true);
+    setShowTbl(false);
+    setWinner(null);
+    setScores({});
+
+    setStep('received');  await delay(550);
+    setStep('matched');   await delay(550);
+    setStep('extproc');   await delay(700);
+    setStep('scoring');
+    setShowTbl(true);
+    setPodAnimKey(k => k + 1);
+
+    // Compute scores progressively
+    const computed = {};
+    pods.forEach(p => { computed[p.id] = calcScore(p, model); });
+    for (const pid of pods.map(p => p.id)) {
+      await delay(130);
+      setScores(prev => ({...prev, [pid]: computed[pid]}));
+    }
+    await delay(550);
+
+    const best = pods.filter(p => p.status !== 'degraded')
+      .reduce((b, p) => computed[p.id] > computed[b.id] ? p : b);
+
+    setStep('selected');
+    setWinner(best.id);
+    await delay(700);
+
+    setStep('forwarding'); await delay(650);
+    setStep('complete');   await delay(900);
+
+    const frozenPods = pods.map(p => ({...p}));
+    setPods(prev => prev.map(p => p.id === best.id
+      ? {...p, queue: p.queue + 1, gpuUtil: Math.min(98, p.gpuUtil + 2)} : p
+    ));
+
+    const now = new Date();
+    const ts  = [now.getHours(), now.getMinutes(), now.getSeconds()].map(n => String(n).padStart(2,'0')).join(':');
+    const reasons = [
+      computed[best.id] > 70    ? 'high score'    : '',
+      best.lora.includes(model) ? 'LoRA match'    : '',
+      best.kv > 0.5             ? 'KV cache hit'  : '',
+      best.queue < 3            ? 'low queue'     : '',
+    ].filter(Boolean).join(' · ') || 'best available';
+
+    setLog(prev => [{ time: ts, model, pod: best.id, score: computed[best.id], reason: reasons }, ...prev.slice(0, 29)]);
+    setLastRoute({ scores: {...computed}, winner: best.id, model, prompt, frozenPods, time: ts, reasons });
+
+    await delay(1200);
+    setStep('idle');
+    setRunning(false);
+  }, [pods, model, prompt, running]);
+
+  return (
+    <div className="min-h-screen bg-gray-950 text-gray-100 p-5 max-w-screen-2xl mx-auto">
+
+      {/* Header */}
+      <div ref={headerRef} className="flex flex-wrap items-start justify-between gap-3 mb-5">
+        <div>
+          <h1 className="text-2xl font-black tracking-tight">
+            <span className="text-green-400">NGINX</span>
+            <span className="text-gray-500 font-light mx-2">Gateway Fabric</span>
+            <span className="text-orange-400">EPP</span>
+            <span className="text-gray-500 font-light mx-2">Inference Router</span>
+            <span className="ml-2 text-xs font-normal bg-purple-900/40 border border-purple-700/40 text-purple-300 px-2 py-0.5 rounded-full font-mono">GSAP</span>
+          </h1>
+          <p className="text-xs text-gray-600 mt-1">
+            kubernetes-sigs/gateway-api-inference-extension · KV-cache aware endpoint scheduling · vLLM + LoRA routing
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {['nginx-gateway-fabric','gateway-api-inference-ext','vLLM','ext-proc/gRPC','Kubernetes','GSAP 3'].map(t => (
+            <span key={t} className="tag-badge text-xs bg-gray-800 border border-gray-700 text-gray-400 px-2.5 py-1 rounded-full" style={{ opacity: 0 }}>{t}</span>
+          ))}
+        </div>
+      </div>
+
+      {/* Architecture Flow */}
+      <ArchFlow step={step} completed={isCompleted} />
+
+      {/* Main Grid */}
+      <div className="grid grid-cols-12 gap-5 mb-4 items-start">
+        <div className="col-span-12 xl:col-span-4 space-y-4 xl:sticky xl:top-4">
+
+          {/* Prompt sender */}
+          <div className="bg-gray-900/80 border border-gray-700/60 rounded-2xl p-5">
+            <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Inference Request</div>
+            <label className="text-xs text-gray-500 block mb-1">InferenceModel</label>
+            <select
+              value={model} onChange={e => setModel(e.target.value)} disabled={running}
+              className="w-full bg-gray-800 border border-gray-600 text-gray-200 text-sm rounded-lg px-3 py-2 mb-4 focus:outline-none focus:border-blue-500 disabled:opacity-50">
+              {MODELS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+            </select>
+            <label className="text-xs text-gray-500 block mb-1">Prompt</label>
+            <textarea
+              value={prompt} onChange={e => setPrompt(e.target.value)} disabled={running} rows={3}
+              className="w-full bg-gray-800 border border-gray-600 text-gray-200 text-xs rounded-lg px-3 py-2.5 mb-2 focus:outline-none focus:border-blue-500 resize-none font-mono leading-relaxed disabled:opacity-50"
+            />
+            <div className="mb-4 space-y-1">
+              {SAMPLE_PROMPTS.slice(0,4).map((p, i) => (
+                <button key={i} onClick={() => setPrompt(p)} disabled={running}
+                  className="w-full text-left text-xs text-gray-600 hover:text-gray-400 truncate transition-colors disabled:opacity-30 py-0.5">
+                  ↪ {p.slice(0,58)}…
+                </button>
+              ))}
+            </div>
+            <button onClick={sendPrompt} disabled={running || !prompt.trim()}
+              className={`w-full py-3 rounded-xl text-sm font-black tracking-wide transition-all duration-200 ${
+                running ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                        : 'bg-green-600 hover:bg-green-500 active:scale-95 text-white shadow-lg shadow-green-950'
+              }`}>
+              {running
+                ? <span className="flex items-center justify-center gap-2"><Spinner /> Routing in progress…</span>
+                : '▶ Send Prompt'}
+            </button>
+          </div>
+
+          {/* Pipeline tracker */}
+          {showPipeline && (
+            <div className={`border rounded-2xl p-4 transition-all duration-500
+              ${isCompleted ? 'bg-green-950/15 border-green-800/30' : 'bg-gray-900/80 border-gray-700/60'}`}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-xs font-bold text-gray-400 uppercase tracking-widest">Routing Pipeline</div>
+                {isCompleted && <span className="text-xs text-green-500 font-mono">all steps complete</span>}
+              </div>
+              <StepTracker step={step} winner={displayWinner} completed={isCompleted} lastRoute={lastRoute} />
+              {isCompleted && <DecisionRationale lastRoute={lastRoute} />}
+            </div>
+          )}
+
+          <EPPInfo />
+        </div>
+
+        {/* Pod Grid */}
+        <div className="col-span-12 xl:col-span-8">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="text-xs font-bold text-gray-400 uppercase tracking-widest">InferencePool</div>
+            <span className="font-mono text-purple-400 text-xs bg-purple-950/40 border border-purple-800/40 px-2 py-0.5 rounded">llm-pool-inference</span>
+            {isCompleted
+              ? <span className="ml-auto text-xs text-green-700 font-mono">pod scores frozen at decision time · live metrics drifting</span>
+              : <span className="ml-auto text-xs text-gray-700">live metrics auto-drift every 2s</span>
+            }
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+            {pods.map(pod => (
+              <PodCard
+                key={pod.id}
+                pod={isCompleted ? (lastRoute.frozenPods.find(p => p.id === pod.id) || pod) : pod}
+                sc={displayScores[pod.id]}
+                isWinner={displayWinner === pod.id}
+                showScore={showScoreTable}
+                isSnapshot={isCompleted}
+                animKey={podAnimKey}
+              />
+            ))}
+          </div>
+          {isCompleted && (
+            <div className="mt-2 text-xs text-gray-700 text-right">
+              📸 Pod metrics shown reflect state at routing decision · live pod grid resumes on next prompt
+            </div>
+          )}
+
+          {/* Scoring Table — sits directly under InferencePool grid */}
+          {showScoreTable && (
+            <div className="mt-4">
+              <ScoringTable
+                pods={displayPods}
+                scores={displayScores}
+                modelId={isCompleted ? lastRoute.model : model}
+                winner={isCompleted ? lastRoute.winner : (step !== 'scoring' ? winner : null)}
+                snapshot={isCompleted}
+                snapshotTime={lastRoute?.time}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Routing Log */}
+      <RoutingLog entries={log} />
+
+      <div className="mt-5 text-center text-xs text-gray-800">
+        NGINX Gateway Fabric + Gateway API Inference Extension (kubernetes-sigs) ·
+        EPP = Endpoint Picker Protocol · KV-cache aware · LoRA-aware · ext-proc/gRPC · Animated with GSAP 3
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
