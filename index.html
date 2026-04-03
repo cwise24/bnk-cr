@@ -696,12 +696,11 @@ svg.arch .node.selected rect { filter: brightness(1.5) drop-shadow(0 0 8px curre
     <line x1="950" y1="344" x2="950" y2="417" stroke="#00e5cc" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-teal)"/>
     <text x="958" y="386" font-family="Share Tech Mono,monospace" font-size="9" fill="#00e5cc" opacity=".7">metrics</text>
 
-    <!-- f5-analyzer → HTTPRoute + L4Route (bus) -->
-    <line x1="869" y1="447" x2="869" y2="492" stroke="#00e5cc" stroke-width="1.5"/>
-    <line x1="250" y1="492" x2="869" y2="492" stroke="#00e5cc" stroke-width="1.5"/>
-    <line x1="340" y1="477" x2="340" y2="492" stroke="#00e5cc" stroke-width="1.5" marker-end="url(#arr-teal)"/>
-    <line x1="540" y1="477" x2="540" y2="492" stroke="#00e5cc" stroke-width="1.5" marker-end="url(#arr-teal)"/>
-    <text x="590" y="506" font-family="Share Tech Mono,monospace" font-size="9" fill="#00e5cc" opacity=".7">monitors (HTTPRoute or L4Route)</text>
+    <!-- f5-analyzer → HTTPRoute (center-bottom to center-bottom) -->
+    <line x1="950" y1="474" x2="950" y2="500" stroke="#00e5cc" stroke-width="1.5"/>
+    <line x1="340" y1="500" x2="950" y2="500" stroke="#00e5cc" stroke-width="1.5"/>
+    <line x1="340" y1="500" x2="340" y2="477" stroke="#00e5cc" stroke-width="1.5" marker-end="url(#arr-teal)"/>
+    <text x="645" y="516" font-family="Share Tech Mono,monospace" font-size="9" fill="#00e5cc" opacity=".7">sends weights to HTTPRoute</text>
 
   </svg>
     </div><!-- /diagram-viewport -->
@@ -867,7 +866,7 @@ angular.module('bnkApp', [])
       cat: 'ai',
       color: '#00e5cc',
       url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/use-cases/intelligent-ai-load-balancing/cr-parameters.html',
-      desc: 'An optional BNK pod enabled via CNEInstance (intelligentLB: true). Defined by the <strong>F5BigAnalyzer CR</strong>, it attaches to one or more <strong>HTTPRoute or L4Route</strong> resources via the <code>applications</code> field. Queries Prometheus metrics and runs a script (built-in <em>LLMLoadMonitor</em> or custom) on a schedule to dynamically adjust route weights for intelligent LLM load balancing. Primarily for DPU installations.<a href="bnk_ailoop.html" target="_blank" style="color: orange;">Example</a>'
+      desc: 'An optional BNK pod enabled via CNEInstance (intelligentLB: true). Defined by the <strong>F5BigAnalyzer CR</strong>, it queries Prometheus metrics and runs a script (built-in <em>LLMLoadMonitor</em> or custom) on a schedule to dynamically calculate optimal route weights. It sends updated weights directly to <strong>HTTPRoute</strong> only. Primarily for DPU installations.'
     }
   ];
 
