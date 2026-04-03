@@ -359,6 +359,14 @@ svg.arch .node.selected rect { filter: brightness(1.5) drop-shadow(0 0 8px curre
 .ng-hide-add, .ng-hide-remove { transition: opacity .2s; }
 .ng-hide { opacity: 0 !important; }
 
+/* ── Edge label backgrounds ── */
+text.lbl {
+  paint-order: stroke fill;
+  stroke: #080c14;
+  stroke-width: 6px;
+  stroke-linejoin: round;
+}
+
 /* ── Zoom Controls ── */
 .diagram {
   position: relative;
@@ -409,10 +417,15 @@ svg.arch .node.selected rect { filter: brightness(1.5) drop-shadow(0 0 8px curre
 .diagram-viewport.panning { cursor: grabbing; }
 .diagram-viewport svg.arch {
   transform-origin: 0 0;
-  will-change: transform;
   display: block;
   transition: none;
+  text-rendering: geometricPrecision;
+  shape-rendering: geometricPrecision;
 }
+
+/* CSS glow replaces rasterising SVG feGaussianBlur filters */
+svg.arch .node.cat-gateway g  { filter: drop-shadow(0 0 5px rgba(0,200,255,.45)); }
+svg.arch .node.cat-infra g    { filter: drop-shadow(0 0 5px rgba(0,200,255,.35)); }
 </style>
 </head>
 
@@ -526,7 +539,7 @@ svg.arch .node.selected rect { filter: brightness(1.5) drop-shadow(0 0 8px curre
 
     <!-- CNEInstance -->
     <a class="node cat-infra" bnk-node="CNEInstance" style="cursor:pointer">
-    <g transform="translate(430,30)" filter="url(#glow-blue)">
+    <g transform="translate(430,30)">
       <rect x="-90" y="0" width="180" height="54" rx="8" fill="#0d1e2e" stroke="#ffe066" stroke-width="1.5"/>
       <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="11" fill="#ffe066" letter-spacing=".08em">CNEInstance</text>
       <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">CNE desired-state declaration</text>
@@ -558,7 +571,7 @@ svg.arch .node.selected rect { filter: brightness(1.5) drop-shadow(0 0 8px curre
 
     <!-- F5BNKGateway -->
     <a class="node cat-gateway" bnk-node="F5BNKGateway" style="cursor:pointer">
-    <g transform="translate(430,160)" filter="url(#glow-blue)">
+    <g transform="translate(690,225)">
       <rect x="-100" y="0" width="200" height="54" rx="8" fill="#0d1e2e" stroke="#00c8ff" stroke-width="2"/>
       <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="11" fill="#00c8ff" letter-spacing=".08em">F5BNKGateway</text>
       <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">IPAM + BIG-IP binding (FIC)</text>
@@ -590,7 +603,7 @@ svg.arch .node.selected rect { filter: brightness(1.5) drop-shadow(0 0 8px curre
 
     <!-- Gateway -->
     <a class="node cat-gateway" bnk-node="Gateway" style="cursor:pointer">
-    <g transform="translate(430,290)" filter="url(#glow-blue)">
+    <g transform="translate(430,225)">
       <rect x="-100" y="0" width="200" height="54" rx="8" fill="#0d2030" stroke="#00c8ff" stroke-width="1.5" stroke-dasharray="5 3"/>
       <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="11" fill="#00c8ff" letter-spacing=".08em">Gateway</text>
       <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">K8s Gateway API resource</text>
@@ -622,7 +635,7 @@ svg.arch .node.selected rect { filter: brightness(1.5) drop-shadow(0 0 8px curre
 
     <!-- HTTPRoute -->
     <a class="node cat-gateway" bnk-node="HTTPRoute" style="cursor:pointer">
-    <g transform="translate(340,420)" filter="url(#glow-blue)">
+    <g transform="translate(340,420)">
       <rect x="-90" y="0" width="180" height="54" rx="8" fill="#0d1e2e" stroke="#00c8ff" stroke-width="1.5"/>
       <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="11" fill="#00c8ff" letter-spacing=".08em">HTTPRoute</text>
       <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">L7 routing &amp; path rules</text>
@@ -632,7 +645,7 @@ svg.arch .node.selected rect { filter: brightness(1.5) drop-shadow(0 0 8px curre
 
     <!-- L4Route -->
     <a class="node cat-gateway" bnk-node="L4Route" style="cursor:pointer">
-    <g transform="translate(540,420)" filter="url(#glow-blue)">
+    <g transform="translate(540,420)">
       <rect x="-90" y="0" width="180" height="54" rx="8" fill="#0d1e2e" stroke="#00c8ff" stroke-width="1.5"/>
       <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="11" fill="#00c8ff" letter-spacing=".08em">L4Route</text>
       <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">TCP/UDP routing rules</text>
@@ -653,54 +666,54 @@ svg.arch .node.selected rect { filter: brightness(1.5) drop-shadow(0 0 8px curre
     <!-- ═══ EDGES ═══ -->
 
     <!-- BNKSecPolicy → F5BigFwPolicy -->
-    <line x1="80" y1="157" x2="80" y2="87" stroke="#7fff6e" stroke-width="1.5" marker-end="url(#arr-green)"/>
-    <text x="88" y="128" font-family="Share Tech Mono,monospace" font-size="9" fill="#7fff6e" opacity=".7">parentRef</text>
+    <line x1="80" y1="157" x2="80" y2="87" stroke="#7fff6e" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-green)"/>
+    <text x="88" y="128" font-family="Share Tech Mono,monospace" font-size="9" fill="#7fff6e" class="lbl" opacity=".7">parentRef</text>
 
     <!-- BNKSecPolicy → Gateway -->
-    <line x1="155" y1="187" x2="327" y2="290" stroke="#7fff6e" stroke-width="1.5" marker-end="url(#arr-green)"/>
-    <text text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="9" fill="#7fff6e" opacity=".7" transform="translate(241,246) rotate(31)">attaches to GW or GW Listener</text>
+    <line x1="155" y1="187" x2="328" y2="250" stroke="#7fff6e" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-green)"/>
+    <text text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="9" fill="#7fff6e" class="lbl" opacity=".7" transform="translate(245,207) rotate(20)">attaches to GW or GW Listener</text>
 
     <!-- BNKNetPolicy → Gateway -->
-    <line x1="155" y1="317" x2="327" y2="317" stroke="#c97bff" stroke-width="1.5" marker-end="url(#arr-purple)"/>
-    <text text-anchor="middle" dy="-5" font-family="Share Tech Mono,monospace" font-size="9" fill="#c97bff" opacity=".7" transform="translate(241,317)">attaches to GW or GW Listener</text>
+    <line x1="155" y1="317" x2="328" y2="252" stroke="#c97bff" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-purple)"/>
+    <text text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="9" fill="#c97bff" class="lbl" opacity=".7" transform="translate(246,297) rotate(-21)">attaches to GW or GW Listener</text>
 
     <!-- BNKNetPolicy → cne iRule -->
-    <line x1="80" y1="347" x2="80" y2="417" stroke="#c97bff" stroke-width="1.5" marker-end="url(#arr-purple)"/>
-    <text x="88" y="390" font-family="Share Tech Mono,monospace" font-size="9" fill="#c97bff" opacity=".7">parentRef</text>
+    <line x1="80" y1="347" x2="80" y2="417" stroke="#c97bff" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-purple)"/>
+    <text x="88" y="390" font-family="Share Tech Mono,monospace" font-size="9" fill="#c97bff" class="lbl" opacity=".7">parentRef</text>
 
-    <!-- CNEInstance → F5BNKGateway -->
-    <line x1="430" y1="84" x2="430" y2="157" stroke="#ffe066" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-yellow)"/>
-    <text x="438" y="128" font-family="Share Tech Mono,monospace" font-size="9" fill="#ffe066" opacity=".7">provisions</text>
+    <!-- CNEInstance → Gateway -->
+    <line x1="430" y1="84" x2="430" y2="222" stroke="#ffe066" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-yellow)"/>
+    <text x="438" y="158" font-family="Share Tech Mono,monospace" font-size="9" fill="#ffe066" class="lbl" opacity=".7">provisions</text>
 
     <!-- F5BNKGateway → Gateway -->
-    <line x1="430" y1="214" x2="430" y2="287" stroke="#00c8ff" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-blue)"/>
-    <text x="438" y="257" font-family="Share Tech Mono,monospace" font-size="9" fill="#00c8ff" opacity=".7">binds IP</text>
+    <line x1="588" y1="252" x2="533" y2="252" stroke="#00c8ff" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-blue)"/>
+    <text x="539" y="246" font-family="Share Tech Mono,monospace" font-size="9" fill="#00c8ff" class="lbl" opacity=".7">binds IP</text>
 
-    <!-- Gateway → HTTPRoute -->
-    <line x1="400" y1="344" x2="370" y2="417" stroke="#00c8ff" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-blue)"/>
-    <text x="368" y="388" font-family="Share Tech Mono,monospace" font-size="9" fill="#00c8ff" opacity=".7">parentRef</text>
+    <!-- HTTPRoute → Gateway -->
+    <line x1="370" y1="417" x2="415" y2="282" stroke="#00c8ff" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-blue)"/>
+    <text text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="9" fill="#00c8ff" class="lbl" opacity=".7" transform="translate(381,346) rotate(-73)">parentRef</text>
 
-    <!-- Gateway → L4Route -->
-    <line x1="460" y1="344" x2="510" y2="417" stroke="#00c8ff" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-blue)"/>
-    <text x="462" y="388" font-family="Share Tech Mono,monospace" font-size="9" fill="#00c8ff" opacity=".7">parentRef</text>
+    <!-- L4Route → Gateway -->
+    <line x1="510" y1="417" x2="445" y2="282" stroke="#00c8ff" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-blue)"/>
+    <text text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="9" fill="#00c8ff" class="lbl" opacity=".7" transform="translate(488,344) rotate(64)">parentRef</text>
 
     <!-- F5SPKEgress → F5SPKSnatpool -->
     <line x1="950" y1="157" x2="950" y2="87" stroke="#ff6b35" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arr-orange)"/>
-    <text x="958" y="128" font-family="Share Tech Mono,monospace" font-size="9" fill="#ff6b35" opacity=".7">opt. ref pool</text>
+    <text x="958" y="128" font-family="Share Tech Mono,monospace" font-size="9" fill="#ff6b35" class="lbl" opacity=".7">opt. ref pool</text>
 
     <!-- CNEInstance → F5SPKEgress -->
     <line x1="520" y1="57" x2="855" y2="160" stroke="#ff6b35" stroke-width="1.5" marker-end="url(#arr-orange)"/>
-    <text text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="9" fill="#ff6b35" opacity=".7" transform="translate(687,99) rotate(17)">egress via net-attach-def</text>
+    <text text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="9" fill="#ff6b35" class="lbl" opacity=".7" transform="translate(687,99) rotate(17)">egress via net-attach-def</text>
 
     <!-- Prometheus → f5-analyzer -->
     <line x1="950" y1="344" x2="950" y2="417" stroke="#00e5cc" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-teal)"/>
-    <text x="958" y="386" font-family="Share Tech Mono,monospace" font-size="9" fill="#00e5cc" opacity=".7">metrics</text>
+    <text x="958" y="386" font-family="Share Tech Mono,monospace" font-size="9" fill="#00e5cc" class="lbl" opacity=".7">metrics</text>
 
     <!-- f5-analyzer → HTTPRoute (center-bottom to center-bottom) -->
     <line x1="950" y1="474" x2="950" y2="500" stroke="#00e5cc" stroke-width="1.5"/>
     <line x1="340" y1="500" x2="950" y2="500" stroke="#00e5cc" stroke-width="1.5"/>
     <line x1="340" y1="500" x2="340" y2="477" stroke="#00e5cc" stroke-width="1.5" marker-end="url(#arr-teal)"/>
-    <text x="645" y="516" font-family="Share Tech Mono,monospace" font-size="9" fill="#00e5cc" opacity=".7">sends weights to HTTPRoute</text>
+    <text x="645" y="516" font-family="Share Tech Mono,monospace" font-size="9" fill="#00e5cc" class="lbl" opacity=".7">sends weights to HTTPRoute</text>
 
   </svg>
     </div><!-- /diagram-viewport -->
