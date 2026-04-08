@@ -880,6 +880,14 @@ angular.module('bnkApp', [])
       color: '#00e5cc',
       url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/use-cases/intelligent-ai-load-balancing/cr-parameters.html',
       desc: 'An optional BNK pod enabled via CNEInstance (intelligentLB: true). Defined by the <strong>F5BigAnalyzer CR</strong>, it queries Prometheus metrics and runs a script (built-in <em>LLMLoadMonitor</em> or custom) on a schedule to dynamically calculate optimal route weights. It sends updated weights directly to <strong>HTTPRoute</strong> only. Primarily for DPU installations. <a href="https://cwise24.github.io/bnk-cr/bnk_ailoop.html" target="_blank" style="color: orange;"> Example</a>'
+    },
+    {
+      name: 'All BNK CRDs',
+      category: 'Instance / Infra',
+      cat: 'infra',
+      color: '#ffe066',
+      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/custom-resource-definitions/',
+      desc: 'Consult these custom resource definition (CRD) schemas when creating custom resources. You create custom resources to configure a CNE instance as an instance of an F5 BIG-IP Cloud-Native Edition product.'
     }
   ];
 
