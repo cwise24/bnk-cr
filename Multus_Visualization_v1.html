@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CNI Multus — F5 Training</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:      #080c14;
+  --grid:    rgba(0,200,255,.04);
+  --panel:   rgba(5,20,40,.88);
+  --border:  rgba(0,200,255,.18);
+  --accent:  #00c8ff;
+  --accent2: #ff6b35;
+  --accent3: #7fff6e;
+  --accent4: #c97bff;
+  --text:    #c8e8ff;
+  --muted:   #5a7a9a;
+  --glow:    0 0 18px rgba(0,200,255,.35);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  font-family: 'Exo 2', sans-serif;
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none; z-index: 0;
+}
+.back-nav { position: relative; z-index: 1; padding: 10px 28px; border-bottom: 1px solid rgba(0,200,255,.1); }
+.back-link {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: 'Share Tech Mono', monospace; font-size: .72rem; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--muted); text-decoration: none;
+  padding: 6px 14px; border: 1px solid rgba(0,200,255,.12); border-radius: 20px;
+  background: rgba(0,200,255,.04); transition: color .2s, border-color .2s, background .2s;
+}
+.back-link:hover { color: var(--accent); border-color: rgba(0,200,255,.35); background: rgba(0,200,255,.08); }
+#root { position: relative; z-index: 1; }
+</style>
+</head>
+<body>
+<nav class="back-nav">
+  <a href="index.html" class="back-link">&#8592; Training Portal</a>
+</nav>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+/* ── Constants ─────────────────────────────── */
+const STEPS = [
+  { n:1, title:'Pod Scheduled',            detail:'A pod is scheduled on the node. Kubelet invokes the configured CNI plugin binary to set up networking.' },
+  { n:2, title:'Multus Intercepts',        detail:'Multus is the configured primary CNI. It receives the ADD call from kubelet — no other CNI is called directly.' },
+  { n:3, title:'Default Network First',    detail:'Multus delegates to the cluster CNI (Flannel, Calico, OVN-K8s…). This creates eth0 — the standard pod network interface.' },
+  { n:4, title:'Read Pod Annotations',     detail:'Multus reads the k8s.v1.cni.cncf.io/networks annotation on the pod to discover which secondary networks are requested.' },
+  { n:5, title:'Fetch NADs from API',      detail:'Multus fetches the referenced NetworkAttachmentDefinition CRDs from the Kubernetes API. Each NAD defines a secondary CNI config.' },
+  { n:6, title:'Delegate to Secondary CNIs', detail:'Multus calls each secondary CNI in order — macvlan, SR-IOV, etc. Each one creates an additional interface (net0, net1, …). Pod is now multi-homed.' },
+];
+
+const TABS = [
+  { id:'arch',      label:'⚙ Architecture' },
+  { id:'plugin',    label:'🔌 Thick vs Thin' },
+  { id:'usecases',  label:'📡 Use Cases' },
+  { id:'pitfalls',  label:'⚠ Pitfalls' },
+  { id:'reference', label:'📋 Reference' },
+];
+
+const USE_CASES = [
+  { icon:'📡', color:'#00c8ff', title:'5G / Telco CNFs', body:'Control plane (eth0) vs data plane (net0) separation. CNFs need different QoS, latency guarantees, and isolation per network plane. Multus is mandatory in ETSI NFV and O-RAN deployments.' },
+  { icon:'⚡', color:'#ff6b35', title:'SR-IOV & DPDK Acceleration', body:'Attach SR-IOV Virtual Functions directly to pods for near-line-rate performance. Used with DPDK to bypass the kernel network stack — enabling 10–100 Gbps workloads.' },
+  { icon:'🔒', color:'#7fff6e', title:'Security & Network Isolation', body:'Separate management traffic from application traffic at the interface level — no reliance on iptables or NetworkPolicy alone. Critical for PCI-DSS, HIPAA, and classified workloads.' },
+  { icon:'🧮', color:'#c97bff', title:'HPC & Storage Backends', body:'HPC pods need a fast backend network (InfiniBand, RoCE) plus a standard cluster network. Multus attaches both without re-architecting the cluster CNI.' },
+  { icon:'🌐', color:'#ffe066', title:'Edge & Multi-Cluster', body:'Edge nodes bridging multiple physical networks (OT/IT, Wi-Fi + Ethernet). MEC workloads requiring multiple network attachment points simultaneously.' },
+  { icon:'🔄', color:'#00e5cc', title:'VNF Migration to Kubernetes', body:'Virtual Network Functions designed for multi-NIC VMs can be migrated with minimal changes. Multus replicates the multi-interface model that VNFs rely on.' },
+];
+
+const PITFALLS = [
+  { sev:'HIGH', color:'#ff4444', title:'Cannot Run Standalone', body:'Multus always requires a primary CNI plugin. If your default CNI is misconfigured, Multus fails for ALL pods — not just the multi-homed ones.' },
+  { sev:'HIGH', color:'#ff4444', title:'OOM Kill — Memory Limit Too Low', body:'Default DaemonSet memory limit of 50Mi is insufficient. The multus-daemon gets OOM-killed under load. Increase to 512Mi–1Gi in production.' },
+  { sev:'MED',  color:'#ff6b35', title:'SR-IOV Hardware Dependency', body:'SR-IOV requires specific NIC hardware, IOMMU enabled in BIOS/firmware, and kernel drivers. Does not work in all environments or with all NIC vendors.' },
+  { sev:'MED',  color:'#ff6b35', title:'NAD Namespace Scoping', body:'NetworkAttachmentDefinitions are namespace-scoped. A pod in namespace A cannot use a NAD from namespace B without explicit cross-namespace config.' },
+  { sev:'MED',  color:'#ff6b35', title:'IP Address Management Complexity', body:'Each secondary CNI needs its own IPAM. Overlapping subnets between CNIs cause silent routing failures. Use Whereabouts for cluster-wide IPAM.' },
+  { sev:'MED',  color:'#ff6b35', title:'Observability Gap (Thin Plugin)', body:'Thin plugin has no metrics or health endpoint. Debugging interface attachment failures requires examining CNI logs manually on each node.' },
+  { sev:'LOW',  color:'#ffe066', title:'NetworkPolicy Blind Spots', body:'Kubernetes NetworkPolicy applies only to eth0. Secondary interfaces managed by Multus are NOT subject to NetworkPolicy — plan your security model explicitly.' },
+  { sev:'LOW',  color:'#ffe066', title:'Ordering Matters', body:'CNIs are invoked in annotation order. If a secondary CNI fails, subsequent CNIs are not called. Pod lands in CrashLoopBackOff with cryptic CNI errors in kubelet logs.' },
+];
+
+/* ── Diagram ──────────────────────────────── */
+function Diagram({ step }) {
+  const ac  = '#00c8ff', g = '#7fff6e', or = '#ff6b35', pu = '#c97bff';
+  const mu  = '#5a7a9a', br = 'rgba(0,200,255,.15)';
+
+  const on  = (...s) => s.includes(step) ? 1   : 0.28;
+  const col = (hi, lo, ...s) => s.includes(step) ? hi : lo;
+  const sw  = (...s) => s.includes(step) ? 2.2 : 1;
+
+  const kubeletOn = step === 0;
+  const multusOn  = step >= 1;
+  const clOn      = step >= 2;
+  const eth0On    = step >= 2;
+  const annotOn   = step === 3;
+  const nadOn     = step === 4;
+  const secOn     = step >= 5;
+
+  return (
+    <svg viewBox="0 0 880 490" xmlns="http://www.w3.org/2000/svg" style={{width:'100%',height:'auto',display:'block'}}>
+      <defs>
+        <marker id="ac"  markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill={ac}/></marker>
+        <marker id="g"   markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill={g}/></marker>
+        <marker id="or"  markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill={or}/></marker>
+        <marker id="pu"  markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill={pu}/></marker>
+        <marker id="mu"  markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill={mu}/></marker>
+      </defs>
+
+      {/* Node border */}
+      <rect x="8" y="8" width="864" height="474" rx="12" fill="rgba(5,20,40,.55)" stroke={br} strokeWidth="1.5"/>
+      <text x="440" y="30" textAnchor="middle" fill={mu} fontSize="10" fontFamily="Share Tech Mono" letterSpacing="3">KUBERNETES NODE</text>
+
+      {/* ── Kubelet ── */}
+      <g opacity={kubeletOn ? 1 : 0.35}>
+        <rect x="28" y="46" width="130" height="46" rx="8" fill="rgba(0,200,255,.1)" stroke={kubeletOn ? ac : mu} strokeWidth={kubeletOn ? 2.2 : 1}/>
+        <text x="93" y="67" textAnchor="middle" fill={kubeletOn ? ac : mu} fontSize="13" fontFamily="Share Tech Mono" fontWeight="bold">kubelet</text>
+        <text x="93" y="83" textAnchor="middle" fill={mu} fontSize="9" fontFamily="Share Tech Mono">CNI ADD call</text>
+      </g>
+
+      {/* Arrow: kubelet → Multus */}
+      <line x1="158" y1="69" x2="300" y2="148" stroke={kubeletOn ? ac : mu} strokeWidth={kubeletOn ? 2 : 1} strokeDasharray={kubeletOn ? '0' : '5 4'} markerEnd={kubeletOn ? 'url(#ac)' : 'url(#mu)'}/>
+      {step === 0 && <text x="196" y="118" fill={ac} fontSize="10" fontFamily="Share Tech Mono" transform="rotate(-30,196,118)">① CNI ADD</text>}
+
+      {/* ── Multus box ── */}
+      <g opacity={multusOn ? 1 : 0.28}>
+        <rect x="290" y="118" width="300" height="68" rx="10" fill="rgba(0,200,255,.1)" stroke={multusOn ? ac : br} strokeWidth={multusOn ? 2.5 : 1.5}/>
+        <text x="440" y="146" textAnchor="middle" fill={multusOn ? ac : mu} fontSize="16" fontFamily="Share Tech Mono" fontWeight="bold">MULTUS CNI</text>
+        <rect x="370" y="152" width="140" height="18" rx="9" fill="rgba(0,200,255,.15)"/>
+        <text x="440" y="165" textAnchor="middle" fill={ac} fontSize="9.5" fontFamily="Share Tech Mono">META-PLUGIN</text>
+      </g>
+
+      {/* ── K8s API (step 5) ── */}
+      <g opacity={nadOn ? 1 : 0} style={{transition:'opacity .3s'}}>
+        <rect x="672" y="46" width="192" height="55" rx="8" fill="rgba(0,200,255,.1)" stroke={ac} strokeWidth="2"/>
+        <text x="768" y="68" textAnchor="middle" fill={ac} fontSize="12" fontFamily="Share Tech Mono" fontWeight="bold">Kubernetes API</text>
+        <text x="768" y="84" textAnchor="middle" fill={mu} fontSize="9.5" fontFamily="Share Tech Mono">NetworkAttachmentDefs</text>
+        <line x1="590" y1="145" x2="672" y2="78" stroke={ac} strokeWidth="2" strokeDasharray="5 3" markerEnd="url(#ac)"/>
+        <text x="616" y="115" fill={ac} fontSize="10" fontFamily="Share Tech Mono">⑤ fetch NADs</text>
+      </g>
+
+      {/* ── Annotation badge (step 4) ── */}
+      <g opacity={annotOn ? 1 : 0} style={{transition:'opacity .3s'}}>
+        <rect x="642" y="134" width="222" height="50" rx="6" fill="rgba(255,107,53,.1)" stroke={or} strokeWidth="1.5"/>
+        <text x="753" y="154" textAnchor="middle" fill={or} fontSize="9.5" fontFamily="Share Tech Mono">k8s.v1.cni.cncf.io/networks:</text>
+        <text x="753" y="168" textAnchor="middle" fill={mu} fontSize="9" fontFamily="Share Tech Mono">[macvlan-conf, sriov-conf]</text>
+        <text x="753" y="177" textAnchor="middle" fill={mu} fontSize="8" fontFamily="Share Tech Mono">pod annotation →</text>
+        <line x1="590" y1="158" x2="642" y2="158" stroke={or} strokeWidth="1.5" markerEnd="url(#or)"/>
+        <text x="604" y="150" fill={or} fontSize="9.5" fontFamily="Share Tech Mono">④ read</text>
+      </g>
+
+      {/* ── Cluster CNI ── */}
+      <g opacity={clOn ? 1 : 0.28}>
+        <rect x="38" y="272" width="188" height="64" rx="8" fill="rgba(127,255,110,.08)" stroke={clOn ? g : mu} strokeWidth={clOn ? 2 : 1}/>
+        <text x="132" y="296" textAnchor="middle" fill={clOn ? g : mu} fontSize="13" fontFamily="Share Tech Mono" fontWeight="bold">Cluster CNI</text>
+        <text x="132" y="312" textAnchor="middle" fill={mu} fontSize="9.5" fontFamily="Share Tech Mono">Flannel / Calico / Cilium</text>
+        <text x="132" y="326" textAnchor="middle" fill={mu} fontSize="9" fontFamily="Share Tech Mono">OVN-Kubernetes</text>
+      </g>
+      {/* Arrow Multus → Cluster CNI */}
+      <line x1="338" y1="186" x2="186" y2="272" stroke={clOn ? g : mu} strokeWidth={clOn ? 2 : 1} strokeDasharray={clOn ? '0' : '5 4'} markerEnd={clOn ? 'url(#g)' : 'url(#mu)'}/>
+      {step === 2 && <text x="224" y="242" fill={g} fontSize="10" fontFamily="Share Tech Mono" transform="rotate(-30,224,242)">③ default net</text>}
+
+      {/* ── macvlan CNI ── */}
+      <g opacity={secOn ? 1 : 0.28}>
+        <rect x="350" y="272" width="180" height="64" rx="8" fill="rgba(255,107,53,.08)" stroke={secOn ? or : mu} strokeWidth={secOn ? 2 : 1}/>
+        <text x="440" y="296" textAnchor="middle" fill={secOn ? or : mu} fontSize="13" fontFamily="Share Tech Mono" fontWeight="bold">macvlan CNI</text>
+        <text x="440" y="312" textAnchor="middle" fill={mu} fontSize="9.5" fontFamily="Share Tech Mono">ipvlan · bridge</text>
+        <text x="440" y="326" textAnchor="middle" fill={mu} fontSize="9" fontFamily="Share Tech Mono">Layer 2 attachment</text>
+      </g>
+      {/* Arrow Multus → macvlan */}
+      <line x1="440" y1="186" x2="440" y2="272" stroke={secOn ? or : mu} strokeWidth={secOn ? 2 : 1} strokeDasharray={secOn ? '0' : '5 4'} markerEnd={secOn ? 'url(#or)' : 'url(#mu)'}/>
+      {step === 5 && <text x="444" y="244" fill={or} fontSize="10" fontFamily="Share Tech Mono">⑥ net0</text>}
+
+      {/* ── SR-IOV CNI ── */}
+      <g opacity={secOn ? 1 : 0.28}>
+        <rect x="650" y="272" width="188" height="64" rx="8" fill="rgba(201,123,255,.08)" stroke={secOn ? pu : mu} strokeWidth={secOn ? 2 : 1}/>
+        <text x="744" y="296" textAnchor="middle" fill={secOn ? pu : mu} fontSize="13" fontFamily="Share Tech Mono" fontWeight="bold">SR-IOV CNI</text>
+        <text x="744" y="312" textAnchor="middle" fill={mu} fontSize="9.5" fontFamily="Share Tech Mono">hardware acceleration</text>
+        <text x="744" y="326" textAnchor="middle" fill={mu} fontSize="9" fontFamily="Share Tech Mono">DPDK · kernel bypass</text>
+      </g>
+      {/* Arrow Multus → SR-IOV */}
+      <line x1="542" y1="186" x2="700" y2="272" stroke={secOn ? pu : mu} strokeWidth={secOn ? 2 : 1} strokeDasharray={secOn ? '0' : '5 4'} markerEnd={secOn ? 'url(#pu)' : 'url(#mu)'}/>
+      {step === 5 && <text x="604" y="242" fill={pu} fontSize="10" fontFamily="Share Tech Mono">⑥ net1</text>}
+
+      {/* ── Pod box ── */}
+      <rect x="38" y="378" width="804" height="88" rx="8" fill="rgba(5,20,40,.9)" stroke={eth0On ? br : 'rgba(90,122,154,0.15)'} strokeWidth="1.5"/>
+      <text x="440" y="396" textAnchor="middle" fill={mu} fontSize="9.5" fontFamily="Share Tech Mono" letterSpacing="2">POD</text>
+
+      {/* eth0 */}
+      <g opacity={eth0On ? 1 : 0.28}>
+        <rect x="72" y="400" width="120" height="54" rx="7" fill={eth0On ? 'rgba(127,255,110,.12)' : 'rgba(90,122,154,.08)'} stroke={eth0On ? g : mu} strokeWidth={eth0On ? 2 : 1}/>
+        <text x="132" y="423" textAnchor="middle" fill={eth0On ? g : mu} fontSize="14" fontFamily="Share Tech Mono" fontWeight="bold">eth0</text>
+        <text x="132" y="438" textAnchor="middle" fill={mu} fontSize="9" fontFamily="Share Tech Mono">cluster network</text>
+        <text x="132" y="449" textAnchor="middle" fill={mu} fontSize="8.5" fontFamily="Share Tech Mono">10.244.x.x</text>
+      </g>
+      <line x1="132" y1="336" x2="132" y2="400" stroke={eth0On ? g : mu} strokeWidth={eth0On ? 2 : 1} strokeDasharray={eth0On ? '0' : '5 4'} markerEnd={eth0On ? 'url(#g)' : 'url(#mu)'}/>
+
+      {/* net0 */}
+      <g opacity={secOn ? 1 : 0.28}>
+        <rect x="380" y="400" width="120" height="54" rx="7" fill={secOn ? 'rgba(255,107,53,.12)' : 'rgba(90,122,154,.08)'} stroke={secOn ? or : mu} strokeWidth={secOn ? 2 : 1}/>
+        <text x="440" y="423" textAnchor="middle" fill={secOn ? or : mu} fontSize="14" fontFamily="Share Tech Mono" fontWeight="bold">net0</text>
+        <text x="440" y="438" textAnchor="middle" fill={mu} fontSize="9" fontFamily="Share Tech Mono">secondary · L2</text>
+        <text x="440" y="449" textAnchor="middle" fill={mu} fontSize="8.5" fontFamily="Share Tech Mono">192.168.1.x</text>
+      </g>
+      <line x1="440" y1="336" x2="440" y2="400" stroke={secOn ? or : mu} strokeWidth={secOn ? 2 : 1} strokeDasharray={secOn ? '0' : '5 4'} markerEnd={secOn ? 'url(#or)' : 'url(#mu)'}/>
+
+      {/* net1 */}
+      <g opacity={secOn ? 1 : 0.28}>
+        <rect x="686" y="400" width="120" height="54" rx="7" fill={secOn ? 'rgba(201,123,255,.12)' : 'rgba(90,122,154,.08)'} stroke={secOn ? pu : mu} strokeWidth={secOn ? 2 : 1}/>
+        <text x="746" y="423" textAnchor="middle" fill={secOn ? pu : mu} fontSize="14" fontFamily="Share Tech Mono" fontWeight="bold">net1</text>
+        <text x="746" y="438" textAnchor="middle" fill={mu} fontSize="9" fontFamily="Share Tech Mono">SR-IOV · DPDK</text>
+        <text x="746" y="449" textAnchor="middle" fill={mu} fontSize="8.5" fontFamily="Share Tech Mono">VF direct</text>
+      </g>
+      <line x1="744" y1="336" x2="744" y2="400" stroke={secOn ? pu : mu} strokeWidth={secOn ? 2 : 1} strokeDasharray={secOn ? '0' : '5 4'} markerEnd={secOn ? 'url(#pu)' : 'url(#mu)'}/>
+    </svg>
+  );
+}
+
+/* ── Code Block ───────────────────────────── */
+function Code({ children }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard.writeText(children).then(() => { setCopied(true); setTimeout(()=>setCopied(false), 1800); });
+  };
+  return (
+    <div style={{position:'relative',background:'#060a10',border:'1px solid rgba(0,200,255,.14)',borderRadius:'8px',overflow:'hidden',marginBottom:'18px'}}>
+      <button onClick={copy} style={{position:'absolute',top:'8px',right:'10px',fontFamily:'Share Tech Mono',fontSize:'.68rem',letterSpacing:'.1em',background:'rgba(0,200,255,.1)',border:'1px solid rgba(0,200,255,.2)',borderRadius:'4px',color:'#00c8ff',padding:'3px 10px',cursor:'pointer'}}>
+        {copied ? '✓ COPIED' : 'COPY'}
+      </button>
+      <pre style={{padding:'18px 16px',fontSize:'.78rem',lineHeight:'1.7',color:'#c8e8ff',fontFamily:'Share Tech Mono',overflowX:'auto',whiteSpace:'pre'}}>{children}</pre>
+    </div>
+  );
+}
+
+/* ── App ──────────────────────────────────── */
+function App() {
+  const [tab,  setTab]  = useState('arch');
+  const [step, setStep] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const timer = useRef(null);
+
+  const advance = useCallback(() => {
+    setStep(s => { if (s >= STEPS.length - 1) { setPlaying(false); return s; } return s + 1; });
+  }, []);
+
+  useEffect(() => {
+    if (playing) { timer.current = setInterval(advance, 2000); }
+    else clearInterval(timer.current);
+    return () => clearInterval(timer.current);
+  }, [playing, advance]);
+
+  const reset = () => { setStep(0); setPlaying(false); };
+
+  /* shared style helpers */
+  const S = {
+    page:    { maxWidth:'1160px', margin:'0 auto', padding:'32px 24px 70px' },
+    eyebrow: { fontFamily:'Share Tech Mono', fontSize:'.7rem', letterSpacing:'.25em', color:'#00c8ff', textTransform:'uppercase', marginBottom:'8px' },
+    h1:      { fontSize:'clamp(1.8rem,4vw,2.8rem)', fontWeight:800, letterSpacing:'-.02em', background:'linear-gradient(135deg,#00c8ff 0%,#fff 52%,#c97bff 100%)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', backgroundClip:'text', lineHeight:1.1, marginBottom:'16px' },
+    tabs:    { display:'flex', flexWrap:'wrap', gap:'6px', marginBottom:'28px', borderBottom:'1px solid rgba(0,200,255,.12)', paddingBottom:'0' },
+    tab:     (id) => ({ fontFamily:'Share Tech Mono', fontSize:'.75rem', letterSpacing:'.12em', textTransform:'uppercase', padding:'10px 18px', cursor:'pointer', border:'none', background:'none', color: tab===id ? '#00c8ff' : '#5a7a9a', borderBottom: tab===id ? '2px solid #00c8ff' : '2px solid transparent', transition:'color .2s', marginBottom:'-1px' }),
+    card:    (c='rgba(0,200,255,.18)') => ({ background:'rgba(5,20,40,.85)', border:`1px solid ${c}`, borderRadius:'10px', padding:'22px 20px' }),
+    pill:    (c) => ({ display:'inline-block', fontFamily:'Share Tech Mono', fontSize:'.68rem', letterSpacing:'.1em', padding:'4px 12px', borderRadius:'20px', border:`1px solid ${c}55`, color:c, background:`${c}14`, textTransform:'uppercase' }),
+    btn:     (primary) => ({ fontFamily:'Share Tech Mono', fontSize:'.72rem', letterSpacing:'.14em', textTransform:'uppercase', padding:'8px 18px', borderRadius:'6px', cursor:'pointer', border: primary ? 'none' : '1px solid rgba(0,200,255,.25)', background: primary ? '#00c8ff' : 'rgba(0,200,255,.08)', color: primary ? '#080c14' : '#00c8ff', fontWeight: primary ? 700 : 400 }),
+  };
+
+  return (
+    <div style={S.page}>
+
+      {/* ── Header ── */}
+      <div style={{marginBottom:'36px'}}>
+        <div style={S.eyebrow}>F5 Training · CNCF Ecosystem</div>
+        <h1 style={S.h1}>CNI Multus</h1>
+        <p style={{color:'#5a7a9a', fontSize:'.95rem', lineHeight:1.7, maxWidth:'680px', marginBottom:'20px'}}>
+          A meta-plugin that enables multi-homed pods in Kubernetes — attaching multiple network interfaces from different CNI plugins simultaneously. Essential for 5G/Telco, SR-IOV, and security isolation workloads.
+        </p>
+        <div style={{display:'flex', flexWrap:'wrap', gap:'10px'}}>
+          <span style={S.pill('#00c8ff')}>CNCF Graduated</span>
+          <span style={S.pill('#7fff6e')}>k8snetworkplumbingwg</span>
+          <span style={S.pill('#c97bff')}>v4.0+ Thick Plugin</span>
+          <span style={S.pill('#ff6b35')}>Meta-Plugin</span>
+        </div>
+      </div>
+
+      {/* ── Tabs ── */}
+      <div style={S.tabs}>
+        {TABS.map(t => <button key={t.id} style={S.tab(t.id)} onClick={()=>setTab(t.id)}>{t.label}</button>)}
+      </div>
+
+      {/* ══════════════ ARCHITECTURE ══════════════ */}
+      {tab === 'arch' && (
+        <div style={{display:'grid', gridTemplateColumns:'1fr 300px', gap:'20px'}}>
+          {/* Diagram */}
+          <div style={S.card()}>
+            <Diagram step={step}/>
+            <div style={{display:'flex', gap:'10px', marginTop:'16px', justifyContent:'center'}}>
+              <button style={S.btn(false)} onClick={reset}>↺ Reset</button>
+              <button style={S.btn(false)} onClick={() => setStep(s => Math.max(0, s-1))}>◀ Back</button>
+              {playing
+                ? <button style={S.btn(true)}  onClick={() => setPlaying(false)}>❚❚ Pause</button>
+                : <button style={S.btn(true)}  onClick={() => { if(step >= STEPS.length-1) setStep(0); setPlaying(true); }}>▶ Play</button>}
+              <button style={S.btn(false)} onClick={advance} disabled={step >= STEPS.length-1}>Step ▶</button>
+            </div>
+          </div>
+
+          {/* Step panel */}
+          <div style={{display:'flex', flexDirection:'column', gap:'8px'}}>
+            <div style={{fontFamily:'Share Tech Mono', fontSize:'.68rem', letterSpacing:'.18em', color:'#5a7a9a', textTransform:'uppercase', marginBottom:'4px'}}>Request Flow</div>
+            {STEPS.map((s, i) => (
+              <div key={i} onClick={() => { setStep(i); setPlaying(false); }}
+                style={{...S.card(step===i ? 'rgba(0,200,255,.4)' : 'rgba(0,200,255,.1)'), display:'flex', gap:'12px', cursor:'pointer', padding:'14px 16px', background: step===i ? 'rgba(0,200,255,.08)' : 'rgba(5,20,40,.85)'}}>
+                <div style={{width:'24px', height:'24px', borderRadius:'50%', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', background: step===i ? '#00c8ff' : 'rgba(0,200,255,.12)', color: step===i ? '#080c14' : '#5a7a9a', fontFamily:'Share Tech Mono', fontSize:'.7rem', fontWeight:700}}>
+                  {s.n}
+                </div>
+                <div>
+                  <div style={{fontSize:'.82rem', fontWeight:600, color: step===i ? '#c8e8ff' : '#5a7a9a', marginBottom:'4px'}}>{s.title}</div>
+                  {step===i && <div style={{fontSize:'.78rem', color:'#5a7a9a', lineHeight:1.55}}>{s.detail}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════ THICK vs THIN ══════════════ */}
+      {tab === 'plugin' && (
+        <div>
+          <p style={{color:'#5a7a9a', fontSize:'.9rem', marginBottom:'24px', lineHeight:1.65}}>
+            Introduced in Multus v4.0, the <strong style={{color:'#00c8ff'}}>thick plugin</strong> is the recommended deployment model for production environments.
+          </p>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'20px'}}>
+            {/* Thin */}
+            <div style={S.card('rgba(90,122,154,.3)')}>
+              <div style={{...S.pill('#5a7a9a'), marginBottom:'14px'}}>Thin Plugin · Legacy</div>
+              <div style={{fontSize:'1.05rem', fontWeight:700, marginBottom:'16px', color:'#c8e8ff'}}>Single Binary Model</div>
+              {[
+                ['Binary', 'multus-cni (single binary)'],
+                ['Invoked by', 'kubelet directly on each pod create'],
+                ['Process', 'No persistent node agent'],
+                ['Metrics', '✗ No Prometheus endpoint'],
+                ['Health Check', '✗ No liveness probe support'],
+                ['Complexity', 'Low — fewer components'],
+                ['Resource use', 'Lower overhead'],
+                ['Status', 'Still works; fewer operational features'],
+              ].map(([k,v]) => (
+                <div key={k} style={{display:'flex', gap:'12px', padding:'8px 0', borderBottom:'1px solid rgba(0,200,255,.08)', fontSize:'.85rem'}}>
+                  <span style={{color:'#5a7a9a', minWidth:'100px', fontFamily:'Share Tech Mono', fontSize:'.75rem'}}>{k}</span>
+                  <span style={{color:'#c8e8ff'}}>{v}</span>
+                </div>
+              ))}
+            </div>
+            {/* Thick */}
+            <div style={S.card('rgba(0,200,255,.25)')}>
+              <div style={{...S.pill('#00c8ff'), marginBottom:'14px'}}>Thick Plugin · v4.0+ Recommended</div>
+              <div style={{fontSize:'1.05rem', fontWeight:700, marginBottom:'16px', color:'#c8e8ff'}}>Daemon + Shim Model</div>
+              {[
+                ['Binaries', 'multus-daemon + multus-shim'],
+                ['Architecture', 'Persistent node agent via gRPC/socket'],
+                ['Process', 'multus-daemon runs on every node'],
+                ['Metrics', '✓ Prometheus endpoint per interface'],
+                ['Health Check', '✓ Liveness & readiness probes'],
+                ['Complexity', 'Higher — two components'],
+                ['Resource use', '⚠ Increase memory limit to 512Mi–1Gi'],
+                ['Status', 'Recommended for production'],
+              ].map(([k,v]) => (
+                <div key={k} style={{display:'flex', gap:'12px', padding:'8px 0', borderBottom:'1px solid rgba(0,200,255,.08)', fontSize:'.85rem'}}>
+                  <span style={{color:'#5a7a9a', minWidth:'100px', fontFamily:'Share Tech Mono', fontSize:'.75rem'}}>{k}</span>
+                  <span style={{color:'#c8e8ff'}}>{v}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════ USE CASES ══════════════ */}
+      {tab === 'usecases' && (
+        <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(320px,1fr))', gap:'18px'}}>
+          {USE_CASES.map(uc => (
+            <div key={uc.title} style={{...S.card(`${uc.color}33`), borderColor:`${uc.color}30`}}>
+              <div style={{fontSize:'1.8rem', marginBottom:'10px'}}>{uc.icon}</div>
+              <div style={{fontSize:'1rem', fontWeight:700, color:uc.color, marginBottom:'10px'}}>{uc.title}</div>
+              <div style={{fontSize:'.87rem', color:'#5a7a9a', lineHeight:1.65}}>{uc.body}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ══════════════ PITFALLS ══════════════ */}
+      {tab === 'pitfalls' && (
+        <div style={{display:'flex', flexDirection:'column', gap:'12px'}}>
+          {PITFALLS.map(p => (
+            <div key={p.title} style={{...S.card(`${p.color}25`), borderColor:`${p.color}25`, display:'flex', gap:'16px', alignItems:'flex-start'}}>
+              <div style={{...S.pill(p.color), flexShrink:0, marginTop:'2px'}}>{p.sev}</div>
+              <div>
+                <div style={{fontWeight:700, fontSize:'.95rem', marginBottom:'6px', color:'#c8e8ff'}}>{p.title}</div>
+                <div style={{fontSize:'.87rem', color:'#5a7a9a', lineHeight:1.65}}>{p.body}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ══════════════ REFERENCE ══════════════ */}
+      {tab === 'reference' && (
+        <div>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'24px'}}>
+            <div>
+              <div style={{fontFamily:'Share Tech Mono', fontSize:'.7rem', letterSpacing:'.2em', color:'#00c8ff', textTransform:'uppercase', marginBottom:'14px'}}>NAD Examples</div>
+              <div style={{fontFamily:'Share Tech Mono', fontSize:'.72rem', color:'#5a7a9a', marginBottom:'8px'}}>macvlan (Layer 2 bridge)</div>
+              <Code>{`apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: macvlan-conf
+spec:
+  config: |
+    {
+      "cniVersion": "0.3.1",
+      "type": "macvlan",
+      "master": "ens4",
+      "mode": "bridge",
+      "ipam": {
+        "type": "host-local",
+        "subnet": "10.10.0.0/16"
+      }
+    }`}</Code>
+              <div style={{fontFamily:'Share Tech Mono', fontSize:'.72rem', color:'#5a7a9a', marginBottom:'8px'}}>SR-IOV Virtual Function</div>
+              <Code>{`apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: sriov-vf-conf
+  annotations:
+    k8s.v1.cni.cncf.io/resourceName: intel.com/sriov_netdevice
+spec:
+  config: |
+    {
+      "cniVersion": "0.3.1",
+      "type": "sriov",
+      "ipam": {
+        "type": "whereabouts",
+        "range": "192.168.10.0/24"
+      }
+    }`}</Code>
+              <div style={{fontFamily:'Share Tech Mono', fontSize:'.72rem', color:'#5a7a9a', marginBottom:'8px'}}>Pod annotation (referencing NADs)</div>
+              <Code>{`apiVersion: v1
+kind: Pod
+metadata:
+  name: my-multi-homed-pod
+  annotations:
+    k8s.v1.cni.cncf.io/networks: |
+      [
+        { "name": "macvlan-conf",  "interface": "net0" },
+        { "name": "sriov-vf-conf", "interface": "net1" }
+      ]
+spec:
+  containers:
+  - name: app
+    image: nginx`}</Code>
+            </div>
+            <div>
+              <div style={{fontFamily:'Share Tech Mono', fontSize:'.7rem', letterSpacing:'.2em', color:'#00c8ff', textTransform:'uppercase', marginBottom:'14px'}}>kubectl Reference</div>
+              {[
+                ['Deploy Multus (thick plugin)',             'kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master/deployments/multus-daemonset-thick.yml'],
+                ['List all NADs',                           'kubectl get network-attachment-definitions -A'],
+                ['Describe a NAD',                          'kubectl describe net-attach-def macvlan-conf -n default'],
+                ['Verify pod network interfaces',           'kubectl exec -it <pod-name> -- ip addr show'],
+                ['Check Multus DaemonSet health',           'kubectl -n kube-system get pods -l app=multus'],
+                ['Check Multus annotations on pod',         "kubectl get pod <pod-name> -o jsonpath='{.metadata.annotations}' | jq ."],
+                ['View Multus logs on a node',              'kubectl -n kube-system logs -l app=multus --tail=50'],
+                ['Describe pod for network events',         'kubectl describe pod <pod-name> | grep -A5 Annotations'],
+              ].map(([label, cmd]) => (
+                <div key={label} style={{marginBottom:'14px'}}>
+                  <div style={{fontFamily:'Share Tech Mono', fontSize:'.72rem', color:'#5a7a9a', marginBottom:'5px'}}>{label}</div>
+                  <Code>{cmd}</Code>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Key Takeaways */}
+          <div style={{...S.card(), marginTop:'28px'}}>
+            <div style={{fontFamily:'Share Tech Mono', fontSize:'.7rem', letterSpacing:'.2em', color:'#00c8ff', textTransform:'uppercase', marginBottom:'16px'}}>Key Takeaways</div>
+            <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))', gap:'12px'}}>
+              {[
+                ['Meta-plugin',            'Multus orchestrates other CNI plugins — it doesn\'t replace them.'],
+                ['NADs are the glue',      'Use NetworkAttachmentDefinitions (CRDs) to define secondary networks; pods pick them up via annotations.'],
+                ['Use thick plugin',       'v4.0+ thick plugin is recommended for production — tune memory limits to avoid OOM kills (512Mi–1Gi).'],
+                ['NetworkPolicy gap',      'Multus doesn\'t enforce NetworkPolicy on secondary interfaces — design your security model explicitly.'],
+                ['Prime use cases',        '5G/Telco CNFs, SR-IOV data-plane acceleration, security isolation, VNF migration.'],
+                ['F5 integration',         'Multus is often the gateway to BNK advanced Kubernetes integrations with F5 customers.'],
+              ].map(([t,b]) => (
+                <div key={t} style={{background:'rgba(0,200,255,.05)', borderRadius:'8px', padding:'14px 16px', border:'1px solid rgba(0,200,255,.1)'}}>
+                  <div style={{fontWeight:700, fontSize:'.85rem', color:'#00c8ff', marginBottom:'6px'}}>✓ {t}</div>
+                  <div style={{fontSize:'.82rem', color:'#5a7a9a', lineHeight:1.6}}>{b}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Footer */}
+      <div style={{marginTop:'52px', paddingTop:'24px', borderTop:'1px solid rgba(0,200,255,.08)', fontFamily:'Share Tech Mono', fontSize:'.68rem', letterSpacing:'.14em', color:'#5a7a9a', textTransform:'uppercase', textAlign:'center'}}>
+        F5 · Kubernetes Platform Training · CNI Multus · github.com/k8snetworkplumbingwg/multus-cni · 2026
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
