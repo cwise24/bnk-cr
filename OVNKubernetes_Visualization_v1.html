@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OVN-Kubernetes CNI — Interactive Training</title>
+  <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.23.2/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d1117; --surface: #161b22; --surface2: #21262d;
+      --border: #30363d; --text: #e6edf3; --muted: #8b949e;
+      --red: #ee0000; --red-dim: #7d1c1c; --blue: #58a6ff;
+      --green: #3fb950; --yellow: #d29922; --purple: #bc8cff; --cyan: #39c5cf;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
+
+    .header {
+      background: linear-gradient(135deg, #1a0000 0%, #161b22 60%, #0d1117 100%);
+      border-bottom: 2px solid var(--red);
+      padding: 1.25rem 2rem;
+      display: flex; align-items: center; gap: 1rem;
+    }
+    .header-logo { width: 44px; height: 44px; flex-shrink: 0; }
+    .header-title { font-size: 1.4rem; font-weight: 700; }
+    .header-sub { font-size: 0.8rem; color: var(--muted); font-family: monospace; margin-top: 3px; }
+    .header-badge { margin-left: auto; text-align: right; }
+    .header-badge span { display: block; font-family: monospace; font-size: 0.75rem; }
+
+    .tabs { display: flex; background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 2rem; overflow-x: auto; }
+    .tab {
+      padding: 0.875rem 1.25rem; cursor: pointer; font-size: 0.875rem; font-weight: 500;
+      color: var(--muted); border: none; border-bottom: 2px solid transparent;
+      background: none; white-space: nowrap; font-family: inherit; transition: all 0.2s;
+    }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--red); border-bottom-color: var(--red); }
+
+    .content { padding: 1.75rem 2rem; max-width: 1200px; margin: 0 auto; }
+    .section-title { font-size: 1rem; font-weight: 700; margin-bottom: 0.5rem; }
+    .section-desc { color: var(--muted); font-size: 0.875rem; line-height: 1.65; margin-bottom: 1.25rem; }
+
+    .diagram-container { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .diagram-header {
+      padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--border);
+      font-size: 0.8rem; font-weight: 600; color: var(--muted); font-family: monospace;
+      display: flex; align-items: center; gap: 0.5rem;
+    }
+    .diagram-body { padding: 1.25rem; }
+
+    .flow-layout { display: grid; grid-template-columns: 1fr 270px; gap: 1.25rem; }
+    @media (max-width: 800px) { .flow-layout { grid-template-columns: 1fr; } .content { padding: 1rem; } }
+
+    .step-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; }
+    .step-panel-title { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 0.875rem; }
+    .step-item { display: flex; gap: 0.625rem; padding: 0.625rem 0.75rem; border-radius: 6px; margin-bottom: 0.375rem; border: 1px solid transparent; transition: all 0.25s; cursor: pointer; }
+    .step-item:hover { background: rgba(255,255,255,0.03); border-color: var(--border); }
+    .step-item.active { background: rgba(238,0,0,0.08); border-color: var(--red-dim); }
+    .step-num {
+      width: 20px; height: 20px; border-radius: 50%; background: var(--surface2);
+      border: 1px solid var(--border); display: flex; align-items: center; justify-content: center;
+      font-size: 0.65rem; font-weight: 700; flex-shrink: 0; color: var(--muted); transition: all 0.25s;
+    }
+    .step-item.active .step-num { background: var(--red); border-color: var(--red); color: #fff; }
+    .step-label { font-size: 0.77rem; font-weight: 600; color: var(--muted); transition: color 0.25s; }
+    .step-item.active .step-label { color: var(--text); }
+    .step-desc { font-size: 0.75rem; color: var(--muted); line-height: 1.45; margin-top: 3px; }
+
+    .controls { display: flex; gap: 0.625rem; margin-bottom: 1rem; }
+    .btn {
+      padding: 0.45rem 0.9rem; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--text); font-size: 0.8rem; cursor: pointer;
+      font-family: inherit; transition: all 0.2s;
+    }
+    .btn:hover { background: var(--border); }
+    .btn.primary { background: var(--red); border-color: var(--red); color: #fff; }
+    .btn.primary:hover { background: #cc0000; }
+
+    .kv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.75rem; margin-top: 1.25rem; }
+    .kv-card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem; }
+    .kv-label { font-size: 0.65rem; color: var(--muted); font-family: monospace; text-transform: uppercase; margin-bottom: 4px; }
+    .kv-value { font-size: 0.85rem; font-weight: 700; font-family: monospace; }
+
+    .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 0.875rem; margin-top: 1rem; }
+    .card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+      padding: 1.125rem; cursor: pointer; transition: all 0.2s;
+    }
+    .card:hover { border-color: var(--red); transform: translateY(-2px); box-shadow: 0 4px 20px rgba(238,0,0,0.1); }
+    .card-icon { font-size: 1.4rem; margin-bottom: 0.625rem; }
+    .card-title { font-size: 0.875rem; font-weight: 700; font-family: monospace; margin-bottom: 0.375rem; }
+    .card-desc { font-size: 0.78rem; color: var(--muted); line-height: 1.5; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 0.68rem; font-weight: 600; font-family: monospace; margin-top: 0.625rem; }
+    .b-red { background: rgba(238,0,0,.12); color: var(--red); }
+    .b-blue { background: rgba(88,166,255,.12); color: var(--blue); }
+    .b-green { background: rgba(63,185,80,.12); color: var(--green); }
+    .b-purple { background: rgba(188,140,255,.12); color: var(--purple); }
+    .b-cyan { background: rgba(57,197,207,.12); color: var(--cyan); }
+
+    .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.75); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 2rem; }
+    .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.75rem; max-width: 580px; width: 100%; position: relative; max-height: 80vh; overflow-y: auto; }
+    .modal-close { position: absolute; top: 1rem; right: 1rem; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); width: 28px; height: 28px; border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
+    .modal h2 { font-family: monospace; font-size: 1rem; color: var(--blue); margin-bottom: 1rem; }
+    .modal p { font-size: 0.83rem; color: var(--muted); line-height: 1.6; margin-bottom: 0.625rem; }
+    pre { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.875rem; font-family: monospace; font-size: 0.72rem; color: var(--cyan); overflow-x: auto; margin-top: 0.75rem; line-height: 1.5; }
+    svg text { user-select: none; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useRef, useCallback } = React;
+
+// ── DATA ─────────────────────────────────────────────────────────────────────
+
+const NS_STEPS = [
+  { label: "Client sends TCP request", desc: "External client initiates a connection to the app URL. DNS resolves to the OpenShift Router / cloud LB VIP." },
+  { label: "OpenShift Router / Load Balancer", desc: "HAProxy Ingress Controller or cloud LoadBalancer receives the traffic and forwards to a NodePort on a cluster node." },
+  { label: "Gateway Node — OVS br-ex", desc: "Packet enters the gateway node via br-ex, the OVS external bridge connected to the physical NIC." },
+  { label: "OVN Gateway Router — DNAT", desc: "The OVN logical gateway router performs DNAT: translates Service ClusterIP → selected Pod IP. Load balancing happens here." },
+  { label: "Geneve encapsulation (UDP 6081)", desc: "If the target pod is on a different node, the packet is encapsulated in Geneve with the tunnel key identifying the logical datapath." },
+  { label: "Worker Node — OVS br-int", desc: "The Geneve packet arrives at the target node. OVS decapsulates it, matches the logical port binding, and enforces ACL rules." },
+  { label: "veth pair → pod namespace", desc: "OVS forwards the packet through the veth pair into the pod's isolated Linux network namespace." },
+  { label: "Pod / Container receives ✓", desc: "The application container receives the TCP packet on its eth0 interface. NetworkPolicy ACLs were enforced in OVS before delivery." },
+];
+
+const EW_STEPS = [
+  { label: "Pod A sends to Pod B's IP", desc: "Pod A initiates traffic to Pod B's pod IP. The packet exits eth0 through the veth into OVS br-int on Node 1." },
+  { label: "OVS checks logical flow table", desc: "ovn-controller has pre-programmed OVS with logical flows derived from the OVN Southbound DB. OVS matches src/dst logical port." },
+  { label: "NetworkPolicy ACL check", desc: "OVS evaluates OVN ACLs translated from Kubernetes NetworkPolicy objects — both egress from Pod A and ingress to Pod B are checked." },
+  { label: "Same-node? Direct delivery", desc: "If Pod B is on Node 1, OVS delivers directly via its veth — no encapsulation, no tunnel, minimal latency." },
+  { label: "Cross-node: Geneve tunnel", desc: "If Pod B is on Node 2, the packet is Geneve-encapsulated. The outer IP dst is Node 2's TEP (Tunnel Endpoint = node primary IP)." },
+  { label: "Node 2 OVS decapsulates", desc: "OVS on Node 2 receives the Geneve frame, decapsulates, extracts the logical port binding, and re-applies ACL rules for the destination pod." },
+  { label: "Pod B receives packet ✓", desc: "Pod B's container receives the packet. The logical network abstraction is maintained end-to-end — pods see flat L3 connectivity." },
+];
+
+const COMPONENTS = [
+  { icon:"🧠", title:"ovn-northd", badge:"b-red", badgeText:"Control Plane",
+    desc:"Central translator daemon. Reads desired logical state from NB DB (switches, routers, ACLs) and compiles physical flows into SB DB.",
+    detail:`ovn-northd bridges the logical and physical network state in OVN.\n\nIt reads the OVN Northbound Database — where ovn-kubernetes writes the desired topology (logical ports, switches, routers, load balancers, ACLs derived from NetworkPolicy) — and computes the corresponding Logical_Flow entries for each datapath, storing them in the OVN Southbound Database.\n\nIn OpenShift, ovn-northd runs inside the ovnkube-master DaemonSet on control plane nodes. It is the single point of translation, so HA is handled via RAFT-based leader election in the OVN databases.`,
+    code:`# Check ovn-northd pods\noc get pods -n openshift-ovn-kubernetes -l app=ovnkube-master\n\n# View logical network topology\noc -n openshift-ovn-kubernetes exec -it \\\n  ds/ovnkube-master -- ovn-nbctl show\n\n# List all logical switches\noc -n openshift-ovn-kubernetes exec -it \\\n  ds/ovnkube-master -- ovn-nbctl ls-list` },
+
+  { icon:"🗄️", title:"OVN Northbound DB", badge:"b-blue", badgeText:"Database",
+    desc:"Source of truth for logical network state: logical switches (per-node), logical routers, load balancers, ACLs from NetworkPolicy, and port bindings.",
+    detail:`The OVN Northbound Database stores the desired logical network topology.\n\nKey tables:\n- Logical_Switch: one per node (contains all pod ports on that node)\n- Logical_Switch_Port: one per pod, one per host interface\n- Logical_Router: distributed router (inter-pod routing) + gateway router (N-S)\n- Logical_Router_Port: connects routers to switches\n- ACL: Kubernetes NetworkPolicy → OVN ACL rules (priority + match + action)\n- Load_Balancer: Kubernetes Services → OVN LB rules (VIP:port → pod_ip:port)\n- NAT: SNAT/DNAT rules for egress IP and gateway\n\novn-kubernetes (the CNI plugin) writes to the NB DB whenever pods are created/deleted or NetworkPolicies change.`,
+    code:`# Show full NB database\noc -n openshift-ovn-kubernetes exec -it \\\n  ds/ovnkube-master -- ovn-nbctl show\n\n# List ACLs on a namespace switch\noc -n openshift-ovn-kubernetes exec -it \\\n  ds/ovnkube-master -- ovn-nbctl acl-list <switch>\n\n# List load balancers (Services)\noc -n openshift-ovn-kubernetes exec -it \\\n  ds/ovnkube-master -- ovn-nbctl lb-list` },
+
+  { icon:"📡", title:"OVN Southbound DB", badge:"b-blue", badgeText:"Database",
+    desc:"Physical flow state: chassis registrations, port bindings (pod→node), compiled logical flows, MAC bindings. ovn-controllers watch this DB.",
+    detail:`The OVN Southbound Database is the compiled physical state computed by ovn-northd.\n\nKey tables:\n- Chassis: one entry per node, registers TEP IP and tunnel type\n- Port_Binding: maps each logical port to a physical Chassis\n- Logical_Flow: compiled OpenFlow-style rules per datapath pipeline stage\n- MAC_Binding: ARP/ND cache entries for the logical network\n- BFD: Bidirectional Forwarding Detection for tunnel health monitoring\n- IGMP_Group: multicast group memberships\n\nEach ovn-controller on a node watches the SB DB and filters for only the flows relevant to its chassis — minimizing data synced to each node.`,
+    code:`# View SB database\noc -n openshift-ovn-kubernetes exec -it \\\n  ds/ovnkube-master -- ovn-sbctl show\n\n# List all registered chassis (nodes)\noc -n openshift-ovn-kubernetes exec -it \\\n  ds/ovnkube-master -- ovn-sbctl chassis-list\n\n# Show logical flows for a datapath\noc -n openshift-ovn-kubernetes exec -it \\\n  ds/ovnkube-master -- ovn-sbctl lflow-list` },
+
+  { icon:"⚙️", title:"ovn-controller", badge:"b-red", badgeText:"Node Agent",
+    desc:"Per-node agent. Watches SB DB for relevant flows, programs OVS via OpenFlow, manages Geneve TEPs, and claims local port bindings.",
+    detail:`ovn-controller is the per-node agent that bridges OVN and the kernel dataplane.\n\nResponsibilities:\n1. Register node as a Chassis in SB DB with TEP IP\n2. Claim Port_Bindings for pods scheduled on this node\n3. Watch SB DB Logical_Flows filtered to this chassis\n4. Translate logical flows → OpenFlow rules → program OVS br-int\n5. Create and manage Geneve tunnel interfaces (genev_sys_6081)\n6. Manage BFD sessions to detect dead tunnels\n7. Handle MAC/ARP resolution via the logical network\n\nRuns in the ovnkube-node DaemonSet pod on every cluster node.`,
+    code:`# Check ovnkube-node pods (one per node)\noc get pods -n openshift-ovn-kubernetes -l app=ovnkube-node\n\n# View ovn-controller status\noc -n openshift-ovn-kubernetes exec -it \\\n  ds/ovnkube-node -- ovn-controller --version\n\n# Show OVS flows programmed by ovn-controller\noc -n openshift-ovn-kubernetes exec -it \\\n  ds/ovnkube-node -- ovs-ofctl dump-flows br-int` },
+
+  { icon:"🔀", title:"Open vSwitch (OVS)", badge:"b-cyan", badgeText:"Dataplane",
+    desc:"Kernel-level virtual switch. br-ex connects to physical NIC (gateway nodes), br-int connects to all pod veth pairs and Geneve tunnels.",
+    detail:`Open vSwitch is the kernel forwarding engine that implements OVN's logical flows.\n\nTwo key bridges in OVN-Kubernetes:\n\nbr-ex (external bridge):\n- Connected to node's physical NIC\n- Handles ingress/egress for north-south traffic\n- Present on all nodes (shared gateway mode) or gateway nodes only\n\nbr-int (integration bridge):\n- All pod veth pairs attach here\n- Geneve tunnel ports attach here\n- All forwarding logic lives here\n- ACLs (NetworkPolicy) enforced here\n\nOVS uses a hybrid kernel/userspace architecture:\n- Fast path: kernel datapath (dpdk optional) for established flows\n- Slow path: ovs-vswitchd userspace for new flow classification\n\nFlow pipeline: ingress port → L2 classification → ACL → routing → output port`,
+    code:`# View all OVS bridges\novs-vsctl show\n\n# Dump br-int flows (verbose)\novs-ofctl dump-flows br-int\n\n# Show all ports on br-int\novs-vsctl list-ports br-int\n\n# Check Geneve tunnel interface\novs-vsctl find Interface type=geneve` },
+
+  { icon:"🌐", title:"Geneve Tunnel", badge:"b-purple", badgeText:"Overlay",
+    desc:"Generic Network Virtualization Encapsulation. OVN-K8s uses Geneve (UDP 6081) for cross-node pod traffic. Carries tunnel metadata for flow classification.",
+    detail:`Geneve (RFC 8926) is the overlay encapsulation protocol used by OVN-Kubernetes for inter-node pod traffic.\n\nWhy Geneve over VXLAN?\n- Extensible TLV options in variable-length header\n- Carries OVN metadata: logical datapath (24-bit) + logical ingress/egress port\n- Better suited to SDN/controller-driven environments than VXLAN\n- Port: UDP 6081 (VXLAN uses 4789)\n\nGeneve in OVN-Kubernetes:\n- Tunnel key (VNI equivalent) = logical datapath identifier\n- Geneve options encode logical port IDs for fast pipeline entry\n- TEP = node primary IP (used as src/dst for tunnel packets)\n- One tunnel interface per remote node (created on-demand)\n- MTU impact: Geneve adds ~50-100 bytes overhead → plan for 1450 pod MTU\n\nFirewall requirement: Allow UDP 6081 inbound/outbound between all cluster nodes.`,
+    code:`# Check Geneve kernel interface\nip link show genev_sys_6081\n\n# List Geneve ports in OVS\novs-vsctl find Interface type=geneve\n\n# Verify tunnel connectivity\novs-ofctl show br-int | grep tun\n\n# Check node TEP assignments\noc -n openshift-ovn-kubernetes exec -it \\\n  ds/ovnkube-master -- ovn-sbctl show | grep encap` },
+
+  { icon:"🛡️", title:"NetworkPolicy (ACLs)", badge:"b-green", badgeText:"Security",
+    desc:"Kubernetes NetworkPolicy → OVN ACLs → OVS OpenFlow rules. Enforced in kernel at OVS layer on each node — both ingress and egress supported.",
+    detail:`OVN-Kubernetes translates Kubernetes NetworkPolicy objects into OVN ACL rules, which are then compiled into OVS OpenFlow rules by ovn-controller.\n\nTranslation chain:\nKubernetes NetworkPolicy → ovn-k8s controller → OVN NB ACL → ovn-northd → SB Logical_Flow → ovn-controller → OVS OpenFlow rule\n\nACL enforcement points:\n- from-lport (priority 1000): egress from pod (leaving)\n- to-lport (priority 1000): ingress to pod (arriving)\n\nSupported features (vs OpenShift SDN):\n- Ingress AND Egress rules ✓ (SDN: ingress only)\n- podSelector, namespaceSelector, ipBlock ✓\n- Port + protocol filtering ✓\n- Default deny when policy exists ✓\n\nEgressFirewall (OpenShift extension):\n- Controls which external CIDRs/domains pods can reach\n- Uses EgressFirewall CRD per namespace\n- Enforced via OVN ACLs\n\nCritical: 100.64.0.0/16 is reserved for OVN internal use — never use this CIDR.`,
+    code:`# List NetworkPolicies\noc get networkpolicy -A\n\n# View as OVN ACLs\noc -n openshift-ovn-kubernetes exec -it \\\n  ds/ovnkube-master -- \\\n  ovn-nbctl acl-list <namespace-switch-name>\n\n# Check EgressFirewall objects\noc get egressfirewall -A\n\n# Debug: trace a packet through OVS\novs-appctl ofproto/trace br-int \\\n  in_port=<port>,ip,nw_src=<pod-ip>,nw_dst=<dst-ip>` },
+
+  { icon:"🔧", title:"Cluster Network Operator", badge:"b-blue", badgeText:"Lifecycle",
+    desc:"OpenShift operator managing OVN-K8s lifecycle: deploys ovnkube-master + ovnkube-node DaemonSets, manages config via Network.operator.openshift.io API.",
+    detail:`The Cluster Network Operator (CNO) is responsible for the full lifecycle of OVN-Kubernetes in OpenShift.\n\nManaged DaemonSets:\n- ovnkube-master: runs ovn-northd + NB DB + SB DB (control plane nodes)\n- ovnkube-node: runs ovn-controller + CNI plugin binary (all nodes)\n- ovs-node: runs OVS daemon (all nodes)\n\nConfiguration via Network.operator.openshift.io/cluster:\n- defaultNetwork.type: OVNKubernetes\n- ovnKubernetesConfig.mtu: pod MTU\n- ovnKubernetesConfig.genevePort: default 6081\n- ovnKubernetesConfig.gatewayConfig.routingViaHost: local gateway mode\n- ovnKubernetesConfig.ipsecConfig: enable IPsec between nodes\n- ovnKubernetesConfig.hybridOverlayConfig: Windows node support\n\nThe CNO watches these objects and reconciles actual state, handling upgrades and config changes.`,
+    code:`# View CNO configuration\noc get network.operator.openshift.io cluster -o yaml\n\n# Check all OVN-K8s pods\noc get pods -n openshift-ovn-kubernetes\n\n# Watch CNO operator logs\noc logs -n openshift-network-operator \\\n  deployment/network-operator -f\n\n# Check network operator status\noc get clusteroperator network` },
+];
+
+// ── ARCHITECTURE SVG ────────────────────────────────────────────────────────
+
+const ArchSVG = () => (
+  <svg viewBox="0 0 900 640" xmlns="http://www.w3.org/2000/svg" style={{width:'100%',height:'auto'}}>
+    <defs>
+      <marker id="a-arr" markerWidth="7" markerHeight="7" refX="5.5" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L7,3z" fill="#8b949e"/>
+      </marker>
+      <marker id="a-red" markerWidth="7" markerHeight="7" refX="5.5" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L7,3z" fill="#ee0000"/>
+      </marker>
+      <marker id="a-pur" markerWidth="7" markerHeight="7" refX="5.5" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L7,3z" fill="#bc8cff"/>
+      </marker>
+    </defs>
+
+    {/* ── K8s Control Plane ── */}
+    <rect x="40" y="15" width="820" height="72" rx="8" fill="#161b22" stroke="#30363d" strokeWidth="1.5"/>
+    <text x="450" y="35" textAnchor="middle" fill="#8b949e" fontSize="10" fontFamily="monospace" fontWeight="600">KUBERNETES CONTROL PLANE</text>
+    <rect x="65" y="42" width="190" height="34" rx="4" fill="#21262d" stroke="#30363d"/>
+    <text x="160" y="64" textAnchor="middle" fill="#58a6ff" fontSize="11" fontFamily="monospace">API Server</text>
+    <rect x="330" y="42" width="240" height="34" rx="4" fill="#21262d" stroke="#ee0000" strokeWidth="1.5"/>
+    <text x="450" y="64" textAnchor="middle" fill="#ee0000" fontSize="11" fontFamily="monospace">Cluster Network Operator (CNO)</text>
+    <rect x="645" y="42" width="190" height="34" rx="4" fill="#21262d" stroke="#30363d"/>
+    <text x="740" y="64" textAnchor="middle" fill="#58a6ff" fontSize="11" fontFamily="monospace">etcd</text>
+
+    {/* CNO arrow down */}
+    <line x1="450" y1="87" x2="450" y2="108" stroke="#ee0000" strokeWidth="1.5" strokeDasharray="4 2" markerEnd="url(#a-red)"/>
+
+    {/* ── OVN Control Plane ── */}
+    <rect x="40" y="110" width="820" height="90" rx="8" fill="#161b22" stroke="#30363d" strokeWidth="1.5"/>
+    <text x="450" y="130" textAnchor="middle" fill="#8b949e" fontSize="10" fontFamily="monospace" fontWeight="600">OVN CONTROL PLANE — ovnkube-master DaemonSet</text>
+    <rect x="72" y="140" width="195" height="48" rx="4" fill="#21262d" stroke="#58a6ff" strokeWidth="1.5"/>
+    <text x="169" y="161" textAnchor="middle" fill="#58a6ff" fontSize="11" fontFamily="monospace">NB Database</text>
+    <text x="169" y="178" textAnchor="middle" fill="#8b949e" fontSize="9" fontFamily="monospace">Logical State (desired)</text>
+    <rect x="353" y="140" width="195" height="48" rx="4" fill="#21262d" stroke="#ee0000" strokeWidth="1.5"/>
+    <text x="450" y="161" textAnchor="middle" fill="#ee0000" fontSize="11" fontFamily="monospace">ovn-northd</text>
+    <text x="450" y="178" textAnchor="middle" fill="#8b949e" fontSize="9" fontFamily="monospace">Translates NB → SB</text>
+    <rect x="633" y="140" width="195" height="48" rx="4" fill="#21262d" stroke="#bc8cff" strokeWidth="1.5"/>
+    <text x="730" y="161" textAnchor="middle" fill="#bc8cff" fontSize="11" fontFamily="monospace">SB Database</text>
+    <text x="730" y="178" textAnchor="middle" fill="#8b949e" fontSize="9" fontFamily="monospace">Physical Flows (compiled)</text>
+    <line x1="267" y1="164" x2="351" y2="164" stroke="#8b949e" strokeWidth="1" markerEnd="url(#a-arr)"/>
+    <line x1="548" y1="164" x2="631" y2="164" stroke="#8b949e" strokeWidth="1" markerEnd="url(#a-arr)"/>
+
+    {/* SB DB → Nodes sync lines */}
+    <line x1="730" y1="200" x2="730" y2="230" stroke="#bc8cff" strokeWidth="1.5" strokeDasharray="4 2"/>
+    <line x1="200" y1="200" x2="200" y2="230" stroke="#bc8cff" strokeWidth="1.5" strokeDasharray="4 2"/>
+    <line x1="200" y1="230" x2="730" y2="230" stroke="#bc8cff" strokeWidth="1" strokeDasharray="4 2"/>
+    <text x="450" y="225" textAnchor="middle" fill="#bc8cff" fontSize="9" fontFamily="monospace">SB DB sync (filtered per-chassis)</text>
+    <line x1="200" y1="230" x2="200" y2="250" stroke="#bc8cff" strokeWidth="1.5" markerEnd="url(#a-pur)"/>
+    <line x1="665" y1="230" x2="665" y2="250" stroke="#bc8cff" strokeWidth="1.5" markerEnd="url(#a-pur)"/>
+
+    {/* ── NODE 1: Gateway ── */}
+    <rect x="40" y="252" width="390" height="230" rx="8" fill="#161b22" stroke="#d29922" strokeWidth="1.5"/>
+    <text x="235" y="273" textAnchor="middle" fill="#d29922" fontSize="10" fontFamily="monospace" fontWeight="600">GATEWAY NODE (ovnkube-node DaemonSet)</text>
+    <rect x="60" y="282" width="155" height="38" rx="4" fill="#21262d" stroke="#ee0000"/>
+    <text x="137" y="299" textAnchor="middle" fill="#ee0000" fontSize="10" fontFamily="monospace">ovn-controller</text>
+    <text x="137" y="312" textAnchor="middle" fill="#8b949e" fontSize="8" fontFamily="monospace">programs OVS flows</text>
+    <rect x="235" y="282" width="175" height="38" rx="4" fill="#21262d" stroke="#39c5cf"/>
+    <text x="322" y="299" textAnchor="middle" fill="#39c5cf" fontSize="10" fontFamily="monospace">OVS br-ex</text>
+    <text x="322" y="312" textAnchor="middle" fill="#8b949e" fontSize="8" fontFamily="monospace">external bridge (→ NIC)</text>
+    <rect x="60" y="333" width="155" height="38" rx="4" fill="#21262d" stroke="#39c5cf"/>
+    <text x="137" y="350" textAnchor="middle" fill="#39c5cf" fontSize="10" fontFamily="monospace">OVS br-int</text>
+    <text x="137" y="363" textAnchor="middle" fill="#8b949e" fontSize="8" fontFamily="monospace">integration bridge</text>
+    <rect x="235" y="333" width="175" height="38" rx="4" fill="#21262d" stroke="#ee0000"/>
+    <text x="322" y="347" textAnchor="middle" fill="#ee0000" fontSize="10" fontFamily="monospace">Gateway Router</text>
+    <text x="322" y="362" textAnchor="middle" fill="#8b949e" fontSize="8" fontFamily="monospace">DNAT / SNAT / LB</text>
+    <rect x="60" y="385" width="350" height="38" rx="4" fill="#21262d" stroke="#bc8cff" strokeWidth="1.5"/>
+    <text x="235" y="402" textAnchor="middle" fill="#bc8cff" fontSize="10" fontFamily="monospace">Geneve TEP — UDP 6081</text>
+    <text x="235" y="416" textAnchor="middle" fill="#8b949e" fontSize="8" fontFamily="monospace">tunnel endpoint = node primary IP</text>
+    <rect x="60" y="436" width="165" height="28" rx="3" fill="#21262d" stroke="#3fb950"/>
+    <text x="142" y="455" textAnchor="middle" fill="#3fb950" fontSize="9" fontFamily="monospace">Pod (veth ↔ eth0)</text>
+    <rect x="240" y="436" width="165" height="28" rx="3" fill="#21262d" stroke="#3fb950"/>
+    <text x="322" y="455" textAnchor="middle" fill="#3fb950" fontSize="9" fontFamily="monospace">Pod (veth ↔ eth0)</text>
+
+    {/* ── NODE 2: Worker ── */}
+    <rect x="470" y="252" width="390" height="230" rx="8" fill="#161b22" stroke="#3fb950" strokeWidth="1.5"/>
+    <text x="665" y="273" textAnchor="middle" fill="#3fb950" fontSize="10" fontFamily="monospace" fontWeight="600">WORKER NODE (ovnkube-node DaemonSet)</text>
+    <rect x="490" y="282" width="155" height="38" rx="4" fill="#21262d" stroke="#ee0000"/>
+    <text x="567" y="299" textAnchor="middle" fill="#ee0000" fontSize="10" fontFamily="monospace">ovn-controller</text>
+    <text x="567" y="312" textAnchor="middle" fill="#8b949e" fontSize="8" fontFamily="monospace">programs OVS flows</text>
+    <rect x="665" y="282" width="175" height="38" rx="4" fill="#21262d" stroke="#39c5cf"/>
+    <text x="752" y="299" textAnchor="middle" fill="#39c5cf" fontSize="10" fontFamily="monospace">OVS br-int</text>
+    <text x="752" y="312" textAnchor="middle" fill="#8b949e" fontSize="8" fontFamily="monospace">integration bridge</text>
+    <rect x="490" y="333" width="175" height="38" rx="4" fill="#21262d" stroke="#58a6ff"/>
+    <text x="577" y="348" textAnchor="middle" fill="#58a6ff" fontSize="10" fontFamily="monospace">Logical Switch</text>
+    <text x="577" y="362" textAnchor="middle" fill="#8b949e" fontSize="8" fontFamily="monospace">per-node (pod ports)</text>
+    <rect x="680" y="333" width="165" height="38" rx="4" fill="#21262d" stroke="#58a6ff"/>
+    <text x="762" y="348" textAnchor="middle" fill="#58a6ff" fontSize="10" fontFamily="monospace">Distributed Router</text>
+    <text x="762" y="362" textAnchor="middle" fill="#8b949e" fontSize="8" fontFamily="monospace">inter-pod routing</text>
+    <rect x="490" y="385" width="350" height="38" rx="4" fill="#21262d" stroke="#bc8cff" strokeWidth="1.5"/>
+    <text x="665" y="402" textAnchor="middle" fill="#bc8cff" fontSize="10" fontFamily="monospace">Geneve TEP — UDP 6081</text>
+    <text x="665" y="416" textAnchor="middle" fill="#8b949e" fontSize="8" fontFamily="monospace">tunnel endpoint = node primary IP</text>
+    <rect x="490" y="436" width="155" height="28" rx="3" fill="#21262d" stroke="#3fb950"/>
+    <text x="567" y="455" textAnchor="middle" fill="#3fb950" fontSize="9" fontFamily="monospace">Pod A (veth ↔ eth0)</text>
+    <rect x="660" y="436" width="165" height="28" rx="3" fill="#21262d" stroke="#3fb950"/>
+    <text x="742" y="455" textAnchor="middle" fill="#3fb950" fontSize="9" fontFamily="monospace">Pod B (veth ↔ eth0)</text>
+
+    {/* Geneve tunnel between nodes */}
+    <line x1="432" y1="404" x2="488" y2="404" stroke="#bc8cff" strokeWidth="2" strokeDasharray="6 3" markerEnd="url(#a-pur)"/>
+    <text x="460" y="396" textAnchor="middle" fill="#bc8cff" fontSize="9" fontFamily="monospace">Geneve</text>
+
+    {/* Internet */}
+    <rect x="320" y="506" width="160" height="32" rx="4" fill="#21262d" stroke="#8b949e"/>
+    <text x="400" y="527" textAnchor="middle" fill="#8b949e" fontSize="10" fontFamily="monospace">🌐 Internet</text>
+    <line x1="380" y1="506" x2="300" y2="484" stroke="#8b949e" strokeWidth="1" strokeDasharray="3 2" markerEnd="url(#a-arr)"/>
+
+    {/* Legend */}
+    <rect x="40" y="555" width="820" height="72" rx="4" fill="#161b22" stroke="#30363d"/>
+    <text x="450" y="572" textAnchor="middle" fill="#8b949e" fontSize="9" fontFamily="monospace" fontWeight="600">LEGEND</text>
+    {[
+      {x:65, c:"#ee0000", l:"Control Plane"}, {x:195, c:"#39c5cf", l:"OVS Bridge"},
+      {x:310, c:"#bc8cff", l:"Geneve Overlay"}, {x:430, c:"#3fb950", l:"Pod"},
+      {x:510, c:"#58a6ff", l:"Logical Network"}, {x:615, c:"#d29922", l:"Gateway Node"},
+    ].map(({x,c,l},i)=>(
+      <g key={i}>
+        <circle cx={x} cy={586} r={4} fill={c}/>
+        <text x={x+10} y={590} fill="#8b949e" fontSize="9" fontFamily="monospace">{l}</text>
+      </g>
+    ))}
+    <text x="450" y="615" textAnchor="middle" fill="#8b949e" fontSize="8" fontFamily="monospace">
+      ─ ─ SB DB sync (per chassis)    · · · Geneve encapsulated tunnel    → traffic flow direction
+    </text>
+  </svg>
+);
+
+// ── NORTH-SOUTH FLOW ─────────────────────────────────────────────────────────
+
+// Ball travels in a lane to the RIGHT of the step boxes (cx=680)
+// Each cy is the vertical center of the corresponding box (i*67 + 20 + 26)
+const NS_PTS = [
+  {cx:680,cy:46},{cx:680,cy:113},{cx:680,cy:180},{cx:680,cy:247},
+  {cx:680,cy:314},{cx:680,cy:381},{cx:680,cy:448},{cx:680,cy:515},
+];
+
+const NorthSouthFlow = ({activeStep, onStepChange}) => {
+  const svgRef = useRef(null);
+  const tlRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+
+  // Jump ball directly to a step when user clicks a step item
+  const jumpToStep = useCallback((i) => {
+    if (tlRef.current) tlRef.current.kill();
+    setPlaying(false);
+    const svg = svgRef.current;
+    const pt = NS_PTS[i];
+    gsap.to([svg.getElementById('ns-pkt'), svg.getElementById('ns-glw')], {
+      attr: { cx: pt.cx, cy: pt.cy },
+      duration: 0.4,
+      ease: "power2.out"
+    });
+    const box = svg.getElementById(`ns-b-${i}`);
+    if (box) {
+      gsap.fromTo(box,
+        { attr: { stroke: '#ee0000', strokeWidth: '2.5' } },
+        { attr: { stroke: '#30363d', strokeWidth: '1.5' }, duration: 0.6, delay: 0.15 }
+      );
+    }
+    onStepChange(i);
+  }, [onStepChange]);
+
+  const play = useCallback(() => {
+    if (tlRef.current) tlRef.current.kill();
+    const svg = svgRef.current;
+    const pkt = svg.getElementById('ns-pkt');
+    const glw = svg.getElementById('ns-glw');
+    gsap.set([pkt, glw], {attr:{cx:680,cy:46}, opacity:1});
+    onStepChange(0);
+    const tl = gsap.timeline({onComplete:()=>setPlaying(false)});
+    NS_PTS.forEach((pt,i)=>{
+      if(i===0) return;
+      tl.to([pkt,glw],{attr:{cx:pt.cx,cy:pt.cy},duration:0.65,ease:"power2.inOut",onStart:()=>onStepChange(i)});
+      const box = svg.getElementById(`ns-b-${i}`);
+      if(box){ tl.to(box,{attr:{stroke:'#ee0000',strokeWidth:'2.5'},duration:0.15},'<'); tl.to(box,{attr:{stroke:'#30363d',strokeWidth:'1.5'},duration:0.3},'+=0.2'); }
+      tl.to({},{duration:0.25});
+    });
+    tlRef.current = tl;
+    setPlaying(true);
+  },[onStepChange]);
+
+  const reset = useCallback(()=>{
+    if(tlRef.current) tlRef.current.kill();
+    const svg = svgRef.current;
+    gsap.set([svg.getElementById('ns-pkt'),svg.getElementById('ns-glw')],{attr:{cx:680,cy:46},opacity:1});
+    onStepChange(0); setPlaying(false);
+  },[onStepChange]);
+
+  const pause = useCallback(()=>{
+    if(!tlRef.current) return;
+    if(tlRef.current.paused()){tlRef.current.play();setPlaying(true);}
+    else{tlRef.current.pause();setPlaying(false);}
+  },[]);
+
+  const boxes = [
+    {id:'ns-b-0', label:'🌐 External Client', sub:'TCP SYN → app.example.com:443', sc:'#58a6ff'},
+    {id:'ns-b-1', label:'OpenShift Router / Load Balancer', sub:'HAProxy Ingress / Cloud LB → NodePort', sc:'#58a6ff'},
+    {id:'ns-b-2', label:'Gateway Node · OVS br-ex', sub:'External bridge — packet enters cluster node', sc:'#39c5cf'},
+    {id:'ns-b-3', label:'OVN Gateway Router — DNAT', sub:'ClusterIP:port → PodIP:port · load balance', sc:'#ee0000'},
+    {id:'ns-b-4', label:'Geneve Encapsulation (UDP 6081)', sub:'Tunnel key encodes logical datapath + port', sc:'#bc8cff'},
+    {id:'ns-b-5', label:'Worker Node · OVS br-int', sub:'Decapsulate · logical port match · ACL check', sc:'#39c5cf'},
+    {id:'ns-b-6', label:'veth pair → pod namespace', sub:'Kernel bridge to pod network namespace', sc:'#d29922'},
+    {id:'ns-b-7', label:'Pod / Container  ✓', sub:'Application receives packet on eth0 interface', sc:'#3fb950'},
+  ];
+
+  return (
+    <div>
+      <div className="controls">
+        <button className="btn primary" onClick={play}>▶ Play</button>
+        <button className="btn" onClick={pause}>{playing?'⏸ Pause':'▶ Resume'}</button>
+        <button className="btn" onClick={reset}>↺ Reset</button>
+      </div>
+      <div className="flow-layout">
+        <div className="diagram-container">
+          <svg ref={svgRef} viewBox="0 0 750 590" xmlns="http://www.w3.org/2000/svg" style={{width:'100%'}}>
+            <defs>
+              <radialGradient id="pg1" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor="#fff"/>
+                <stop offset="100%" stopColor="#58a6ff"/>
+              </radialGradient>
+              <filter id="gf1"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+              <marker id="ns-tick" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto">
+                <path d="M0,0 L0,5 L5,2.5z" fill="#30363d"/>
+              </marker>
+            </defs>
+
+            {/* ── Vertical ball track, RIGHT of boxes ── */}
+            <text x="680" y="18" textAnchor="middle" fill="#30363d" fontSize="8" fontFamily="monospace" letterSpacing="1">PACKET</text>
+            <line x1="680" y1="24" x2="680" y2="528" stroke="#21262d" strokeWidth="2" strokeDasharray="5 4"/>
+
+            {/* ── Step boxes (left column) + horizontal connectors to track ── */}
+            {boxes.map((b,i)=>{
+              const cy = i*67+46;
+              const isActive = activeStep === i;
+              return (
+                <g key={i}>
+                  {/* Box */}
+                  <rect id={b.id} x="15" y={i*67+20} width="570" height="52" rx="6"
+                    fill="#161b22" stroke={isActive ? '#ee0000' : '#30363d'}
+                    strokeWidth={isActive ? '2' : '1.5'}/>
+                  <text x="300" y={i*67+44} textAnchor="middle" fill={b.sc} fontSize="11.5" fontFamily="monospace">{b.label}</text>
+                  <text x="300" y={i*67+60} textAnchor="middle" fill="#8b949e" fontSize="9.5" fontFamily="monospace">{b.sub}</text>
+                  {/* Horizontal connector: box right edge → ball track */}
+                  <line
+                    x1="585" y1={cy} x2="667" y2={cy}
+                    stroke={isActive ? '#58a6ff' : '#21262d'}
+                    strokeWidth={isActive ? '1.5' : '1'}
+                    strokeDasharray="3 2"
+                    markerEnd="url(#ns-tick)"
+                  />
+                  {/* Tick dot on track at this step */}
+                  <circle cx="680" cy={cy} r="3"
+                    fill={isActive ? '#58a6ff' : '#21262d'}/>
+                </g>
+              );
+            })}
+
+            {/* ── Glowing packet ball ── */}
+            <circle id="ns-glw" cx="680" cy="46" r="16" fill="#58a6ff" opacity="0.22" filter="url(#gf1)"/>
+            <circle id="ns-pkt" cx="680" cy="46" r="9" fill="url(#pg1)"/>
+          </svg>
+        </div>
+
+        {/* ── Step panel — each item is clickable ── */}
+        <div className="step-panel">
+          <div className="step-panel-title">
+            Packet Journey
+            <span style={{fontSize:'0.63rem',color:'var(--muted)',fontWeight:400,marginLeft:'0.4rem',fontStyle:'italic'}}>click to jump</span>
+          </div>
+          {NS_STEPS.map((s,i)=>(
+            <div
+              key={i}
+              className={`step-item${activeStep===i?' active':''}`}
+              onClick={()=>jumpToStep(i)}
+              title={`Jump to step ${i+1}`}
+            >
+              <div className="step-num">{i+1}</div>
+              <div>
+                <div className="step-label">{s.label}</div>
+                {activeStep===i && <div className="step-desc">{s.desc}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── EAST-WEST FLOW ────────────────────────────────────────────────────────────
+
+const EW_PTS = [
+  {cx:195,cy:105},{cx:195,cy:178},{cx:195,cy:252},{cx:195,cy:325},
+  {cx:450,cy:400},{cx:705,cy:325},{cx:705,cy:252},{cx:705,cy:105},
+];
+
+const EastWestFlow = ({activeStep, onStepChange}) => {
+  const svgRef = useRef(null);
+  const tlRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+
+  const play = useCallback(()=>{
+    if(tlRef.current) tlRef.current.kill();
+    const svg = svgRef.current;
+    const pkt = svg.getElementById('ew-pkt');
+    const glw = svg.getElementById('ew-glw');
+    gsap.set([pkt,glw],{attr:{cx:195,cy:105},opacity:1});
+    onStepChange(0);
+    const tl = gsap.timeline({onComplete:()=>setPlaying(false)});
+    EW_PTS.forEach((pt,i)=>{
+      if(i===0) return;
+      tl.to([pkt,glw],{attr:{cx:pt.cx,cy:pt.cy},duration:0.65,ease:"power2.inOut",onStart:()=>onStepChange(i)});
+      tl.to({},{duration:0.25});
+    });
+    tlRef.current = tl;
+    setPlaying(true);
+  },[onStepChange]);
+
+  const reset = useCallback(()=>{
+    if(tlRef.current) tlRef.current.kill();
+    const svg = svgRef.current;
+    gsap.set([svg.getElementById('ew-pkt'),svg.getElementById('ew-glw')],{attr:{cx:195,cy:105},opacity:1});
+    onStepChange(0); setPlaying(false);
+  },[onStepChange]);
+
+  const pause = useCallback(()=>{
+    if(!tlRef.current) return;
+    if(tlRef.current.paused()){tlRef.current.play();setPlaying(true);}
+    else{tlRef.current.pause();setPlaying(false);}
+  },[]);
+
+  return (
+    <div>
+      <div className="controls">
+        <button className="btn primary" onClick={play}>▶ Play</button>
+        <button className="btn" onClick={pause}>{playing?'⏸ Pause':'▶ Resume'}</button>
+        <button className="btn" onClick={reset}>↺ Reset</button>
+      </div>
+      <div className="flow-layout">
+        <div className="diagram-container">
+          <svg ref={svgRef} viewBox="0 0 900 470" xmlns="http://www.w3.org/2000/svg" style={{width:'100%'}}>
+            <defs>
+              <radialGradient id="pg2" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor="#fff"/>
+                <stop offset="100%" stopColor="#3fb950"/>
+              </radialGradient>
+              <filter id="gf2"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+              <marker id="ea" markerWidth="7" markerHeight="7" refX="5.5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill="#8b949e"/></marker>
+            </defs>
+
+            {/* Node boxes */}
+            <rect x="25" y="60" width="345" height="300" rx="8" fill="#161b22" stroke="#d29922" strokeWidth="1.5"/>
+            <text x="197" y="80" textAnchor="middle" fill="#d29922" fontSize="10" fontFamily="monospace" fontWeight="600">NODE 1</text>
+            <rect x="530" y="60" width="345" height="300" rx="8" fill="#161b22" stroke="#3fb950" strokeWidth="1.5"/>
+            <text x="702" y="80" textAnchor="middle" fill="#3fb950" fontSize="10" fontFamily="monospace" fontWeight="600">NODE 2</text>
+
+            {/* Node 1 components */}
+            <rect x="105" y="88" width="180" height="40" rx="4" fill="#21262d" stroke="#3fb950" strokeWidth="2"/>
+            <text x="195" y="105" textAnchor="middle" fill="#3fb950" fontSize="10" fontFamily="monospace">Pod A  eth0</text>
+            <text x="195" y="120" textAnchor="middle" fill="#8b949e" fontSize="8.5" fontFamily="monospace">10.128.0.x</text>
+
+            <rect x="105" y="160" width="180" height="40" rx="4" fill="#21262d" stroke="#d29922"/>
+            <text x="195" y="178" textAnchor="middle" fill="#d29922" fontSize="10" fontFamily="monospace">veth pair</text>
+            <text x="195" y="193" textAnchor="middle" fill="#8b949e" fontSize="8.5" fontFamily="monospace">pod ↔ OVS port</text>
+
+            <rect x="105" y="234" width="180" height="40" rx="4" fill="#21262d" stroke="#39c5cf"/>
+            <text x="195" y="252" textAnchor="middle" fill="#39c5cf" fontSize="10" fontFamily="monospace">OVS br-int</text>
+            <text x="195" y="267" textAnchor="middle" fill="#8b949e" fontSize="8.5" fontFamily="monospace">flow lookup + ACL</text>
+
+            <rect x="50" y="308" width="280" height="40" rx="4" fill="#21262d" stroke="#ee0000"/>
+            <text x="190" y="326" textAnchor="middle" fill="#ee0000" fontSize="10" fontFamily="monospace">NetworkPolicy ACLs</text>
+            <text x="190" y="341" textAnchor="middle" fill="#8b949e" fontSize="8.5" fontFamily="monospace">OVN → OVS OpenFlow rules</text>
+
+            {/* Node 2 components */}
+            <rect x="615" y="88" width="180" height="40" rx="4" fill="#21262d" stroke="#3fb950" strokeWidth="2"/>
+            <text x="705" y="105" textAnchor="middle" fill="#3fb950" fontSize="10" fontFamily="monospace">Pod B  eth0</text>
+            <text x="705" y="120" textAnchor="middle" fill="#8b949e" fontSize="8.5" fontFamily="monospace">10.129.0.y</text>
+
+            <rect x="615" y="160" width="180" height="40" rx="4" fill="#21262d" stroke="#d29922"/>
+            <text x="705" y="178" textAnchor="middle" fill="#d29922" fontSize="10" fontFamily="monospace">veth pair</text>
+            <text x="705" y="193" textAnchor="middle" fill="#8b949e" fontSize="8.5" fontFamily="monospace">pod ↔ OVS port</text>
+
+            <rect x="615" y="234" width="180" height="40" rx="4" fill="#21262d" stroke="#39c5cf"/>
+            <text x="705" y="252" textAnchor="middle" fill="#39c5cf" fontSize="10" fontFamily="monospace">OVS br-int</text>
+            <text x="705" y="267" textAnchor="middle" fill="#8b949e" fontSize="8.5" fontFamily="monospace">decapsulate + deliver</text>
+
+            <rect x="570" y="308" width="280" height="40" rx="4" fill="#21262d" stroke="#ee0000"/>
+            <text x="710" y="326" textAnchor="middle" fill="#ee0000" fontSize="10" fontFamily="monospace">NetworkPolicy ACLs</text>
+            <text x="710" y="341" textAnchor="middle" fill="#8b949e" fontSize="8.5" fontFamily="monospace">ingress check for Pod B</text>
+
+            {/* Geneve tunnel */}
+            <rect x="340" y="375" width="220" height="50" rx="6" fill="#1a1033" stroke="#bc8cff" strokeWidth="2" strokeDasharray="5 3"/>
+            <text x="450" y="396" textAnchor="middle" fill="#bc8cff" fontSize="10" fontFamily="monospace">Geneve Tunnel</text>
+            <text x="450" y="413" textAnchor="middle" fill="#8b949e" fontSize="8.5" fontFamily="monospace">UDP 6081  ·  TEP → TEP</text>
+
+            {/* Path lines - node 1 */}
+            <line x1="195" y1="128" x2="195" y2="160" stroke="#8b949e" strokeWidth="1" strokeDasharray="3 2"/>
+            <line x1="195" y1="200" x2="195" y2="234" stroke="#8b949e" strokeWidth="1" strokeDasharray="3 2"/>
+            <line x1="195" y1="274" x2="195" y2="308" stroke="#8b949e" strokeWidth="1" strokeDasharray="3 2"/>
+            <line x1="195" y1="348" x2="195" y2="375" stroke="#bc8cff" strokeWidth="1.5" strokeDasharray="3 2"/>
+            <line x1="195" y1="400" x2="340" y2="400" stroke="#bc8cff" strokeWidth="1.5" strokeDasharray="4 2"/>
+
+            {/* Path lines - node 2 */}
+            <line x1="560" y1="400" x2="705" y2="400" stroke="#bc8cff" strokeWidth="1.5" strokeDasharray="4 2"/>
+            <line x1="705" y1="400" x2="705" y2="375" stroke="#bc8cff" strokeWidth="1.5" strokeDasharray="3 2"/>
+            <line x1="705" y1="348" x2="705" y2="274" stroke="#8b949e" strokeWidth="1" strokeDasharray="3 2"/>
+            <line x1="705" y1="234" x2="705" y2="200" stroke="#8b949e" strokeWidth="1" strokeDasharray="3 2"/>
+            <line x1="705" y1="160" x2="705" y2="128" stroke="#8b949e" strokeWidth="1" strokeDasharray="3 2"/>
+
+            {/* Same-node shortcut annotation */}
+            <line x1="285" y1="326" x2="530" y2="326" stroke="#3fb950" strokeWidth="1" strokeDasharray="3 2" opacity="0.4"/>
+            <text x="450" y="320" textAnchor="middle" fill="#3fb950" fontSize="8.5" fontFamily="monospace" opacity="0.7">same-node: direct (no tunnel)</text>
+
+            {/* Packet */}
+            <circle id="ew-glw" cx="195" cy="105" r="15" fill="#3fb950" opacity="0.2" filter="url(#gf2)"/>
+            <circle id="ew-pkt" cx="195" cy="105" r="8" fill="url(#pg2)"/>
+          </svg>
+        </div>
+        <div className="step-panel">
+          <div className="step-panel-title">Packet Journey</div>
+          {EW_STEPS.map((s,i)=>(
+            <div key={i} className={`step-item${activeStep===i?' active':''}`}>
+              <div className="step-num">{i+1}</div>
+              <div>
+                <div className="step-label">{s.label}</div>
+                {activeStep===i && <div className="step-desc">{s.desc}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── ISOLATION VIEW ────────────────────────────────────────────────────────────
+
+const ISO_LAYERS = [
+  {
+    num: '1', color: '#bc8cff', title: 'Geneve Overlay (UDP 6081)',
+    tag: 'Transport', tagCls: 'b-purple',
+    summary: 'Inter-node logical separation via tunnel key',
+    detail: 'OVN-K8s encapsulates cross-node pod traffic in Geneve frames. The 24-bit tunnel key identifies the logical datapath. Geneve TLV options carry ingress/egress logical port IDs so the receiving node\'s OVS can immediately enter the correct pipeline stage — no secondary lookup needed. This provides logical classification but is NOT a standalone security boundary.',
+    vlan: false, vxlan: false,
+  },
+  {
+    num: '2', color: '#58a6ff', title: 'OVN Logical Network Segmentation',
+    tag: 'Logical', tagCls: 'b-blue',
+    summary: 'Per-node logical switches + distributed router',
+    detail: 'Each node has a logical switch (all pod ports attach here). A distributed logical router connects all switches, enabling flat L3 pod-to-pod routing. A gateway logical router handles external traffic. By default all pods share the same L3 domain — no automatic namespace isolation.',
+    vlan: false, vxlan: false,
+  },
+  {
+    num: '3', color: '#ee0000', title: 'OVN ACLs / NetworkPolicy',
+    tag: 'Security ★', tagCls: 'b-red',
+    summary: 'Stateful firewall enforced in the OVS kernel datapath',
+    detail: 'Kubernetes NetworkPolicy → OVN ACL → OVS OpenFlow. Enforced at both egress (leaving pod) and ingress (arriving at pod). Stateful via OVS conntrack — established connections return without explicit rules. This is the PRIMARY isolation mechanism. Default without any NetworkPolicy: fully open. Default with a NetworkPolicy on a pod: deny-all except matched rules.',
+    vlan: false, vxlan: false,
+  },
+  {
+    num: '4', color: '#3fb950', title: 'EgressFirewall',
+    tag: 'Outbound', tagCls: 'b-green',
+    summary: 'Per-namespace external destination control',
+    detail: 'Controls which external CIDRs or DNS names pods in a namespace can reach. Defined via the EgressFirewall CRD (one per namespace). Compiled to OVN ACLs on the logical switch — same enforcement pipeline as NetworkPolicy. Replaces OpenShift SDN\'s EgressNetworkPolicy.',
+    vlan: false, vxlan: false,
+  },
+  {
+    num: '5', color: '#39c5cf', title: 'Connection Tracking (conntrack)',
+    tag: 'Stateful', tagCls: 'b-cyan',
+    summary: 'Kernel-level stateful flow tracking via nf_conntrack',
+    detail: 'OVS uses Linux nf_conntrack to maintain state for TCP/UDP connections. Allows ACL rules to be written in terms of new vs. established connections. A single ingress "allow" rule permits the full bidirectional flow without a separate egress return rule. Provides TCP session-level isolation granularity.',
+    vlan: false, vxlan: false,
+  },
+  {
+    num: '6', color: '#d29922', title: 'IPsec (Optional)',
+    tag: 'Encryption', tagCls: 'b-purple',
+    summary: 'Encrypts all Geneve tunnel traffic between nodes',
+    detail: 'When enabled via CNO config, OVN-K8s deploys IKEv2 (UDP 500) to negotiate and install IPsec ESP sessions between every pair of nodes. All Geneve-encapsulated pod traffic is encrypted in transit. Essential for zero-trust environments where the physical network cannot be trusted (e.g., multi-tenant bare metal). Adds slight CPU overhead.',
+    vlan: false, vxlan: false,
+  },
+];
+
+const COMPARISON_ROWS = [
+  { tech:'VLAN (802.1Q)', layer:'L2', used:'❌  No', purpose:'Physical underlay segmentation — OVN-K8s is VLAN-agnostic', note:'Underlay may use VLANs; OVN-K8s ignores them' },
+  { tech:'VXLAN (UDP 4789)', layer:'L3 overlay', used:'⚠️  Windows only', purpose:'Used by Hybrid Overlay for Windows nodes only', note:'OpenShift SDN (predecessor) used VXLAN for all pods' },
+  { tech:'Geneve (UDP 6081)', layer:'L3 overlay', used:'✅  Primary', purpose:'Inter-node pod encapsulation with logical metadata', note:'Extensible TLV header carries OVN logical IDs' },
+  { tech:'OVN ACLs', layer:'L3–L4', used:'✅  Always', purpose:'NetworkPolicy + EgressFirewall enforcement', note:'Stateful; kernel-enforced via OVS OpenFlow' },
+  { tech:'IPsec / IKEv2', layer:'L3 crypto', used:'✅  Optional', purpose:'Encrypt Geneve tunnels between nodes', note:'Enable via ovnKubernetesConfig.ipsecConfig' },
+  { tech:'Multitenant mode', layer:'L3–L4', used:'❌  No', purpose:'Automatic namespace isolation', note:'Only in OpenShift SDN — requires NetworkPolicy in OVN-K8s' },
+];
+
+const IsolationView = () => {
+  const [expanded, setExpanded] = useState(null);
+
+  return (
+    <div>
+      {/* Default behaviour callout */}
+      <div style={{background:'rgba(238,0,0,0.08)',border:'1px solid var(--red-dim)',borderRadius:8,padding:'0.875rem 1.125rem',marginBottom:'1.25rem'}}>
+        <div style={{fontFamily:'monospace',fontSize:'0.8rem',color:'var(--red)',fontWeight:700,marginBottom:'0.375rem'}}>⚠ Default Behaviour — No Automatic Namespace Isolation</div>
+        <div style={{fontSize:'0.82rem',color:'var(--muted)',lineHeight:1.55}}>
+          OVN-Kubernetes operates in <strong style={{color:'var(--text)'}}>Network Policy mode only</strong>. Without explicit NetworkPolicy objects, every pod can freely reach every other pod across all namespaces. Unlike OpenShift SDN's Multitenant mode, there is no built-in per-namespace wall. You must deploy NetworkPolicy to isolate workloads.
+        </div>
+      </div>
+
+      {/* Layer stack */}
+      <div style={{marginBottom:'1.5rem'}}>
+        <div style={{fontSize:'0.7rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',color:'var(--muted)',marginBottom:'0.75rem'}}>Isolation Layer Stack — click any layer for detail</div>
+        {ISO_LAYERS.map((l,i)=>(
+          <div key={i}
+            onClick={()=>setExpanded(expanded===i?null:i)}
+            style={{
+              background: expanded===i ? 'rgba(255,255,255,0.04)' : 'var(--surface)',
+              border: `1px solid ${expanded===i ? l.color : 'var(--border)'}`,
+              borderRadius:6, padding:'0.75rem 1rem', marginBottom:'0.5rem',
+              cursor:'pointer', transition:'all 0.2s',
+              borderLeft: `4px solid ${l.color}`,
+            }}>
+            <div style={{display:'flex',alignItems:'center',gap:'0.75rem'}}>
+              <div style={{width:22,height:22,borderRadius:'50%',background:l.color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'0.7rem',fontWeight:700,color:'#000',flexShrink:0}}>{l.num}</div>
+              <div style={{flex:1}}>
+                <div style={{display:'flex',alignItems:'center',gap:'0.5rem',flexWrap:'wrap'}}>
+                  <span style={{fontSize:'0.875rem',fontWeight:700,fontFamily:'monospace',color:'var(--text)'}}>{l.title}</span>
+                  <span className={`badge ${l.tagCls}`}>{l.tag}</span>
+                </div>
+                <div style={{fontSize:'0.78rem',color:'var(--muted)',marginTop:2}}>{l.summary}</div>
+              </div>
+              <div style={{color:'var(--muted)',fontSize:'0.75rem',flexShrink:0}}>{expanded===i?'▲':'▼'}</div>
+            </div>
+            {expanded===i && (
+              <div style={{marginTop:'0.75rem',paddingTop:'0.75rem',borderTop:`1px solid var(--border)`,fontSize:'0.82rem',color:'var(--muted)',lineHeight:1.6}}>
+                {l.detail}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Isolation stack diagram */}
+      <div className="diagram-container" style={{marginBottom:'1.5rem'}}>
+        <div className="diagram-header"><span style={{color:'var(--purple)'}}>◉</span> Isolation Layer Architecture</div>
+        <div className="diagram-body">
+          <svg viewBox="0 0 860 310" xmlns="http://www.w3.org/2000/svg" style={{width:'100%'}}>
+            {/* Layer boxes stacked top to bottom */}
+            {[
+              {y:10,  h:42, fill:'#161b22', stroke:'#ee0000', label:'APPLICATION LAYER', sub:'Kubernetes NetworkPolicy → OVN ACLs → OVS OpenFlow  ·  Stateful · Kernel-enforced · Ingress + Egress', lc:'#ee0000'},
+              {y:62,  h:42, fill:'#161b22', stroke:'#58a6ff', label:'LOGICAL NETWORK LAYER', sub:'Per-node Logical Switches · Distributed Router · Gateway Router  ·  Flat L3 pod network', lc:'#58a6ff'},
+              {y:114, h:42, fill:'#161b22', stroke:'#bc8cff', label:'OVERLAY LAYER', sub:'Geneve (UDP 6081)  ·  Tunnel key = logical datapath ID  ·  TLV options carry port metadata', lc:'#bc8cff'},
+              {y:166, h:42, fill:'#1a1033', stroke:'#d29922', label:'ENCRYPTION LAYER (optional)', sub:'IPsec / IKEv2  ·  Encrypts Geneve tunnel between node TEPs  ·  Enable via CNO ipsecConfig', lc:'#d29922'},
+              {y:218, h:42, fill:'#161b22', stroke:'#30363d', label:'PHYSICAL UNDERLAY (transparent to OVN-K8s)', sub:'Any L2/L3 fabric · May use VLANs / MPLS  ·  Only requirement: UDP 6081 between all node IPs', lc:'#8b949e'},
+            ].map((r,i)=>(
+              <g key={i}>
+                <rect x="20" y={r.y} width="820" height={r.h} rx="5" fill={r.fill} stroke={r.stroke} strokeWidth="1.5"/>
+                <text x="44" y={r.y+17} fill={r.lc} fontSize="10" fontFamily="monospace" fontWeight="700">{r.label}</text>
+                <text x="44" y={r.y+32} fill="#8b949e" fontSize="9" fontFamily="monospace">{r.sub}</text>
+              </g>
+            ))}
+            {/* Down arrows between layers */}
+            {[52,104,156,208].map((y,i)=>(
+              <g key={i}>
+                <line x1="430" y1={y} x2="430" y2={y+10} stroke="#30363d" strokeWidth="1.5"/>
+                <polygon points={`424,${y+10} 436,${y+10} 430,${y+18}`} fill="#30363d"/>
+              </g>
+            ))}
+            {/* NOT VLAN / NOT VXLAN badges */}
+            <rect x="680" y="220" width="148" height="36" rx="4" fill="#21262d" stroke="#30363d"/>
+            <text x="754" y="235" textAnchor="middle" fill="#8b949e" fontSize="9" fontFamily="monospace">Underlay may use:</text>
+            <text x="754" y="250" textAnchor="middle" fill="#d29922" fontSize="9" fontFamily="monospace">VLANs · MPLS · plain IP</text>
+            {/* Geneve detail */}
+            <rect x="600" y="117" width="228" height="36" rx="4" fill="#21262d" stroke="#bc8cff"/>
+            <text x="714" y="132" textAnchor="middle" fill="#bc8cff" fontSize="9" fontFamily="monospace">NOT VLAN  ·  NOT VXLAN</text>
+            <text x="714" y="147" textAnchor="middle" fill="#8b949e" fontSize="9" fontFamily="monospace">Geneve replaces OpenShift SDN's VXLAN</text>
+          </svg>
+        </div>
+      </div>
+
+      {/* Comparison table */}
+      <div className="diagram-container">
+        <div className="diagram-header"><span style={{color:'var(--cyan)'}}>◉</span> Encapsulation Technology Comparison</div>
+        <div className="diagram-body" style={{overflowX:'auto'}}>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:'0.78rem',fontFamily:'monospace'}}>
+            <thead>
+              <tr style={{borderBottom:'1px solid var(--border)'}}>
+                {['Technology','Layer','OVN-K8s?','Purpose','Notes'].map(h=>(
+                  <th key={h} style={{padding:'0.5rem 0.75rem',textAlign:'left',color:'var(--muted)',fontWeight:600,fontSize:'0.7rem',textTransform:'uppercase',letterSpacing:'0.06em'}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {COMPARISON_ROWS.map((r,i)=>(
+                <tr key={i} style={{borderBottom:'1px solid var(--border)',background: i%2===0 ? 'transparent' : 'rgba(255,255,255,0.015)'}}>
+                  <td style={{padding:'0.5rem 0.75rem',color:'var(--text)',fontWeight:700}}>{r.tech}</td>
+                  <td style={{padding:'0.5rem 0.75rem',color:'var(--cyan)'}}>{r.layer}</td>
+                  <td style={{padding:'0.5rem 0.75rem'}}>{r.used}</td>
+                  <td style={{padding:'0.5rem 0.75rem',color:'var(--muted)'}}>{r.purpose}</td>
+                  <td style={{padding:'0.5rem 0.75rem',color:'var(--muted)',fontSize:'0.72rem'}}>{r.note}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── COMPONENT CARDS ───────────────────────────────────────────────────────────
+
+const ComponentCards = () => {
+  const [modal, setModal] = useState(null);
+  return (
+    <div>
+      <p style={{color:'var(--muted)',fontSize:'0.85rem',marginBottom:'0.25rem'}}>Click any component for technical depth and diagnostic commands.</p>
+      <div className="card-grid">
+        {COMPONENTS.map((c,i)=>(
+          <div key={i} className="card" onClick={()=>setModal(c)}>
+            <div className="card-icon">{c.icon}</div>
+            <div className="card-title">{c.title}</div>
+            <div className="card-desc">{c.desc}</div>
+            <span className={`badge ${c.badge}`}>{c.badgeText}</span>
+          </div>
+        ))}
+      </div>
+      {modal && (
+        <div className="overlay" onClick={()=>setModal(null)}>
+          <div className="modal" onClick={e=>e.stopPropagation()}>
+            <button className="modal-close" onClick={()=>setModal(null)}>✕</button>
+            <h2>{modal.icon} {modal.title}</h2>
+            {modal.detail.split('\n\n').map((p,i)=><p key={i}>{p}</p>)}
+            {modal.code && <pre>{modal.code}</pre>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── APP ───────────────────────────────────────────────────────────────────────
+
+const TABS = [
+  {id:'arch', label:'🏗  Architecture'},
+  {id:'ns',   label:'↕  North-South Flow'},
+  {id:'ew',   label:'↔  East-West Flow'},
+  {id:'iso',  label:'🔒  Isolation'},
+  {id:'comp', label:'🔧  Components'},
+];
+
+const App = () => {
+  const [tab, setTab] = useState('arch');
+  const [nsStep, setNsStep] = useState(0);
+  const [ewStep, setEwStep] = useState(0);
+  return (
+    <div>
+      <div className="header">
+        <svg className="header-logo" viewBox="0 0 44 44">
+          <circle cx="22" cy="22" r="21" fill="#ee0000"/>
+          <text x="22" y="30" textAnchor="middle" fill="white" fontSize="22" fontFamily="monospace" fontWeight="bold">K</text>
+        </svg>
+        <div>
+          <div className="header-title">OVN-Kubernetes CNI</div>
+          <div className="header-sub">OpenShift Container Platform · Interactive Network Training Aid</div>
+        </div>
+        <div className="header-badge">
+          <span style={{color:'var(--green)'}}>● OVN-Kubernetes</span>
+          <span style={{color:'var(--muted)'}}>OCP 4.8+</span>
+        </div>
+      </div>
+      <div className="tabs">
+        {TABS.map(t=>(
+          <button key={t.id} className={`tab${tab===t.id?' active':''}`} onClick={()=>setTab(t.id)}>{t.label}</button>
+        ))}
+      </div>
+      <div className="content">
+        {tab==='arch' && (
+          <div>
+            <div className="section-title">OVN-Kubernetes Architecture</div>
+            <p className="section-desc">OVN-Kubernetes is the default CNI plugin for OpenShift Container Platform 4.x. It uses Open Virtual Network (OVN) built atop Open vSwitch (OVS) to deliver a fully distributed, software-defined pod network. The control plane (ovn-northd + NB/SB databases) programs per-node agents (ovn-controller) that configure OVS, which performs all packet forwarding in the kernel.</p>
+            <div className="diagram-container">
+              <div className="diagram-header"><span style={{color:'var(--red)'}}>◉</span> Full Stack Architecture</div>
+              <div className="diagram-body"><ArchSVG/></div>
+            </div>
+            <div className="kv-grid">
+              {[
+                {l:'Default CNI', v:'OpenShift 4.2+', c:'var(--blue)'},
+                {l:'Overlay Protocol', v:'Geneve (UDP 6081)', c:'var(--purple)'},
+                {l:'Reserved CIDR', v:'100.64.0.0/16', c:'var(--red)'},
+                {l:'Default Pod CIDR', v:'10.128.0.0/14', c:'var(--green)'},
+                {l:'Default Svc CIDR', v:'172.30.0.0/16', c:'var(--yellow)'},
+                {l:'NetworkPolicy', v:'Ingress + Egress', c:'var(--green)'},
+                {l:'Gateway Mode', v:'Shared (default)', c:'var(--blue)'},
+                {l:'IPsec Support', v:'Optional (IKE)', c:'var(--cyan)'},
+              ].map((kv,i)=>(
+                <div key={i} className="kv-card">
+                  <div className="kv-label">{kv.l}</div>
+                  <div className="kv-value" style={{color:kv.c}}>{kv.v}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {tab==='ns' && (
+          <div>
+            <div className="section-title">North-South Traffic: External → Pod</div>
+            <p className="section-desc">Traffic from outside the cluster destined for a pod. Routes through the designated gateway node where the OVN Gateway Router performs DNAT. If the target pod is on a different node, traffic is Geneve-encapsulated across the overlay network. Press Play to animate the packet journey.</p>
+            <NorthSouthFlow activeStep={nsStep} onStepChange={setNsStep}/>
+          </div>
+        )}
+        {tab==='ew' && (
+          <div>
+            <div className="section-title">East-West Traffic: Pod ↔ Pod</div>
+            <p className="section-desc">Traffic between pods within the cluster. Same-node traffic is delivered directly via OVS logical flow tables — no encapsulation. Cross-node traffic is Geneve-encapsulated to the destination node's TEP. NetworkPolicy ACLs are enforced at the OVS level on both sending and receiving nodes. Press Play to animate.</p>
+            <EastWestFlow activeStep={ewStep} onStepChange={setEwStep}/>
+          </div>
+        )}
+        {tab==='iso' && (
+          <div>
+            <div className="section-title">Traffic Isolation Mechanisms</div>
+            <p className="section-desc">OVN-Kubernetes uses a multi-layer isolation model. It does <strong>not</strong> use VLANs or VXLAN for pod traffic — it uses Geneve encapsulation combined with OVN logical segmentation and stateful ACLs. Understanding the defaults is critical: there is no automatic namespace isolation out of the box.</p>
+            <IsolationView/>
+          </div>
+        )}
+        {tab==='comp' && (
+          <div>
+            <div className="section-title">OVN-Kubernetes Components</div>
+            <p className="section-desc">The OVN-Kubernetes stack has distinct control-plane and data-plane components. Understanding each layer is essential for debugging, tuning, and operating the cluster network.</p>
+            <ComponentCards/>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
