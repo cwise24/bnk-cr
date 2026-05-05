@@ -107,9 +107,21 @@
     .modal p { font-size: 0.83rem; color: var(--muted); line-height: 1.6; margin-bottom: 0.625rem; }
     pre { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.875rem; font-family: monospace; font-size: 0.72rem; color: var(--cyan); overflow-x: auto; margin-top: 0.75rem; line-height: 1.5; }
     svg text { user-select: none; }
+  .back-nav { background: var(--surface); border-bottom: 1px solid var(--border); padding: 6px 2rem; }
+  .back-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: monospace; font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--muted); text-decoration: none;
+    padding: 4px 12px; border: 1px solid var(--border); border-radius: 20px;
+    background: rgba(255,255,255,0.02); transition: color .2s, border-color .2s;
+  }
+  .back-link:hover { color: var(--red); border-color: var(--red-dim); }
   </style>
 </head>
 <body>
+<nav class="back-nav">
+  <a href="index.html" class="back-link">&#8592; Training Portal</a>
+</nav>
 <div id="root"></div>
 <script type="text/babel">
 const { useState, useRef, useCallback } = React;
