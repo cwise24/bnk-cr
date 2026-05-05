@@ -1,26 +1,24 @@
 <!DOCTYPE html>
-<html lang="en" ng-app="bnkApp">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BNK Custom Resources — Connection Diagram</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/angular.js/1.8.3/angular.min.js"></script>
+<title>F5 Training Portal — Kubernetes &amp; Networking</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;800&display=swap" rel="stylesheet">
 <style>
-/* ── FIX: all CSS custom properties use -- (double-hyphen), not – (en-dash) ── */
 :root {
-  --bg:       #080c14;
-  --grid:     rgba(0,200,255,.04);
-  --panel:    rgba(5,20,40,.85);
-  --border:   rgba(0,200,255,.18);
-  --accent:   #00c8ff;
-  --accent2:  #ff6b35;
-  --accent3:  #7fff6e;
-  --accent4:  #c97bff;
-  --text:     #c8e8ff;
-  --muted:    #5a7a9a;
-  --glow:     0 0 18px rgba(0,200,255,.35);
+  --bg:      #080c14;
+  --grid:    rgba(0,200,255,.04);
+  --panel:   rgba(5,20,40,.85);
+  --border:  rgba(0,200,255,.18);
+  --accent:  #00c8ff;
+  --accent2: #ff6b35;
+  --accent3: #7fff6e;
+  --accent4: #c97bff;
+  --text:    #c8e8ff;
+  --muted:   #5a7a9a;
+  --glow:    0 0 20px rgba(0,200,255,.35);
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -46,1017 +44,249 @@ body::before {
 
 .page {
   position: relative; z-index: 1;
-  max-width: 1100px;
+  max-width: 1140px;
   margin: 0 auto;
-  padding: 40px 24px 60px;
+  padding: 64px 28px 90px;
 }
 
 /* ── Header ── */
 header {
   text-align: center;
-  margin-bottom: 32px;
+  margin-bottom: 64px;
   animation: fadeDown .7s ease both;
 }
-header .eyebrow {
+
+.eyebrow {
   font-family: 'Share Tech Mono', monospace;
   font-size: .72rem;
-  letter-spacing: .25em;
+  letter-spacing: .28em;
   color: var(--accent);
   text-transform: uppercase;
-  margin-bottom: 8px;
+  margin-bottom: 14px;
 }
+
 header h1 {
-  font-size: clamp(1.6rem, 4vw, 2.6rem);
+  font-size: clamp(2rem, 5vw, 3.4rem);
   font-weight: 800;
   letter-spacing: -.02em;
-  background: linear-gradient(135deg, var(--accent) 0%, #fff 55%, var(--accent4) 100%);
+  background: linear-gradient(135deg, var(--accent) 0%, #fff 52%, var(--accent4) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  line-height: 1.15;
+  line-height: 1.12;
+  margin-bottom: 18px;
 }
+
 header p {
-  margin-top: 12px;
   color: var(--muted);
-  font-size: .9rem;
-  font-weight: 300;
-}
-
-/* ── AngularJS Filter Bar ── */
-.filter-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: center;
-  margin-bottom: 24px;
-  animation: fadeDown .5s .1s ease both;
-}
-.filter-btn {
-  font-family: 'Share Tech Mono', monospace;
-  font-size: .72rem;
-  letter-spacing: .08em;
-  padding: 5px 14px;
-  border-radius: 20px;
-  border: 1px solid rgba(255,255,255,.12);
-  background: rgba(5,20,40,.6);
-  color: var(--muted);
-  cursor: pointer;
-  transition: all .2s;
-  text-transform: uppercase;
-}
-.filter-btn:hover  { border-color: rgba(255,255,255,.3); color: var(--text); }
-.filter-btn.active { color: #000; font-weight: 600; }
-.filter-btn.active.all     { background:#fff;      border-color:#fff; }
-.filter-btn.active.gateway { background:#00c8ff;   border-color:#00c8ff; }
-.filter-btn.active.network { background:#ff6b35;   border-color:#ff6b35; }
-.filter-btn.active.security{ background:#7fff6e;   border-color:#7fff6e; }
-.filter-btn.active.policy  { background:#c97bff;   border-color:#c97bff; }
-.filter-btn.active.infra   { background:#ffe066;   border-color:#ffe066; }
-.filter-btn.active.ai      { background:#00e5cc;   border-color:#00e5cc; }
-
-/* ── Diagram ── */
-.diagram {
-  position: relative;
-  width: 100%;
-  margin-bottom: 32px;
-}
-
-svg.arch {
-  width: 100%;
-  height: auto;
-  display: block;
-  overflow: visible;
-}
-
-/* SVG node filtering: dim non-matching nodes when a filter is active */
-svg.arch .node { transition: opacity .3s, filter .3s; cursor: pointer; }
-svg.arch .node rect { transition: opacity .25s, filter .25s; }
-svg.arch .node:hover rect { opacity: .85; filter: brightness(1.3); }
-svg.arch .node.selected rect { filter: brightness(1.5) drop-shadow(0 0 8px currentColor); }
-
-.filter-gateway  svg.arch .node:not(.cat-gateway):not(.cat-infra)  { opacity: .2; }
-.filter-network  svg.arch .node:not(.cat-network):not(.cat-infra)  { opacity: .2; }
-.filter-security svg.arch .node:not(.cat-security)                 { opacity: .2; }
-.filter-policy   svg.arch .node:not(.cat-policy)                   { opacity: .2; }
-.filter-infra    svg.arch .node:not(.cat-infra)                    { opacity: .2; }
-.filter-ai       svg.arch .node:not(.cat-ai)                       { opacity: .2; }
-
-/* ── Legend ── */
-.legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 28px;
-  justify-content: center;
-  margin: 0 0 32px;
-  animation: fadeUp .7s .3s ease both;
-}
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: .78rem;
-  color: var(--muted);
-  font-family: 'Share Tech Mono', monospace;
-}
-.legend-dot {
-  width: 10px; height: 10px;
-  border-radius: 2px;
-  flex-shrink: 0;
-}
-
-/* ── Detail Panel (AngularJS-driven) ── */
-.detail-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,.45);
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  animation: fadeIn .2s ease;
-}
-.detail-panel {
-  width: 380px;
-  max-width: 95vw;
-  height: 100vh;
-  background: #0a1628;
-  border-left: 1px solid rgba(0,200,255,.25);
-  padding: 32px 28px;
-  overflow-y: auto;
-  animation: slideIn .25s cubic-bezier(.4,0,.2,1);
-  position: relative;
-}
-.detail-panel .dp-stripe {
-  height: 3px;
-  border-radius: 2px;
-  margin-bottom: 20px;
-}
-.detail-panel .dp-category {
-  font-family: 'Share Tech Mono', monospace;
-  font-size: .7rem;
-  letter-spacing: .2em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin-bottom: 6px;
-}
-.detail-panel h2 {
-  font-size: 1.4rem;
-  font-weight: 800;
-  margin-bottom: 16px;
-  line-height: 1.2;
-}
-.detail-panel p {
-  font-size: .88rem;
-  color: var(--muted);
+  font-size: 1rem;
   line-height: 1.7;
-  font-weight: 300;
-  margin-bottom: 16px;
-}
-.detail-panel .dp-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-family: 'Share Tech Mono', monospace;
-  font-size: .78rem;
-  padding: 8px 16px;
-  border-radius: 6px;
-  border: 1px solid;
-  text-decoration: none;
-  transition: opacity .2s, transform .2s;
-  margin-top: 8px;
-}
-.detail-panel .dp-link:hover { opacity: .8; transform: translateY(-1px); }
-.detail-panel .dp-close {
-  position: absolute;
-  top: 20px; right: 20px;
-  background: none;
-  border: 1px solid rgba(255,255,255,.15);
-  color: var(--muted);
-  border-radius: 6px;
-  padding: 4px 10px;
-  cursor: pointer;
-  font-family: 'Share Tech Mono', monospace;
-  font-size: .75rem;
-  transition: border-color .2s, color .2s;
-}
-.detail-panel .dp-close:hover { border-color: rgba(255,255,255,.4); color: var(--text); }
-
-/* ── Search bar ── */
-.search-wrap {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 20px;
-  animation: fadeUp .5s .4s ease both;
-}
-.search-input {
-  flex: 1;
-  background: rgba(5,20,40,.8);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 9px 14px;
-  font-family: 'Share Tech Mono', monospace;
-  font-size: .82rem;
-  color: var(--text);
-  outline: none;
-  transition: border-color .2s;
-}
-.search-input::placeholder { color: var(--muted); }
-.search-input:focus { border-color: var(--accent); }
-.search-count {
-  font-family: 'Share Tech Mono', monospace;
-  font-size: .72rem;
-  color: var(--muted);
-  white-space: nowrap;
+  max-width: 580px;
+  margin: 0 auto;
 }
 
-/* ── Explanation cards ── */
-.cards {
+/* ── Module grid ── */
+.modules {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
-  animation: fadeUp .7s .5s ease both;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 24px;
+  margin-bottom: 64px;
 }
-.card {
+
+.module-card {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 18px 20px;
+  border-radius: 16px;
+  padding: 36px 30px 30px;
+  text-decoration: none;
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
   position: relative;
   overflow: hidden;
-  transition: border-color .25s, transform .25s, opacity .3s;
-  cursor: pointer;
+  transition: border-color .25s ease, box-shadow .25s ease, transform .2s ease;
 }
-.card::before {
+
+.module-card::before {
   content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 2px;
-  background: var(--stripe, var(--accent));
-  opacity: .8;
+  position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(0,200,255,.05) 0%, transparent 60%);
+  pointer-events: none;
 }
-.card:hover {
-  border-color: var(--stripe, var(--accent));
-  transform: translateY(-3px);
+
+.module-card:hover {
+  border-color: var(--accent);
+  box-shadow: var(--glow);
+  transform: translateY(-4px);
 }
-.card.card-selected {
-  border-color: var(--stripe, var(--accent));
-  box-shadow: 0 0 18px -4px var(--stripe, var(--accent));
+
+.module-card.orange:hover {
+  border-color: var(--accent2);
+  box-shadow: 0 0 20px rgba(255,107,53,.38);
 }
-.card h3 {
+
+.module-card.purple:hover {
+  border-color: var(--accent4);
+  box-shadow: 0 0 20px rgba(201,123,255,.35);
+}
+
+.module-num {
   font-family: 'Share Tech Mono', monospace;
-  font-size: .82rem;
-  color: var(--stripe, var(--accent));
-  margin-bottom: 7px;
-  letter-spacing: .05em;
+  font-size: .68rem;
+  letter-spacing: .22em;
+  color: var(--accent);
+  text-transform: uppercase;
 }
-.card p {
-  font-size: .82rem;
+.module-card.orange .module-num { color: var(--accent2); }
+.module-card.purple .module-num { color: var(--accent4); }
+
+.module-icon {
+  font-size: 2.2rem;
+  line-height: 1;
+}
+
+.module-title {
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  line-height: 1.2;
+}
+
+.module-desc {
+  font-size: .9rem;
   color: var(--muted);
-  line-height: 1.6;
-  font-weight: 300;
+  line-height: 1.65;
+  flex: 1;
 }
-.card .card-link {
-  display: inline-block;
-  margin-top: 10px;
+
+.module-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: .65rem;
+  letter-spacing: .08em;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: rgba(0,200,255,.08);
+  border: 1px solid rgba(0,200,255,.18);
+  color: var(--accent);
+  text-transform: uppercase;
+}
+.module-card.orange .tag { background: rgba(255,107,53,.08); border-color: rgba(255,107,53,.2); color: var(--accent2); }
+.module-card.purple .tag { background: rgba(201,123,255,.08); border-color: rgba(201,123,255,.2); color: var(--accent4); }
+
+.module-cta {
   font-family: 'Share Tech Mono', monospace;
   font-size: .75rem;
-  text-decoration: underline;
-  opacity: .75;
-  transition: opacity .2s;
+  letter-spacing: .15em;
+  color: var(--accent);
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
 }
-.card .card-link:hover { opacity: 1; }
+.module-card.orange .module-cta { color: var(--accent2); }
+.module-card.purple .module-cta { color: var(--accent4); }
 
-/* ── No results ── */
-.no-results {
-  grid-column: 1/-1;
+.module-cta .arrow { display: inline-block; transition: transform .2s ease; }
+.module-card:hover .module-cta .arrow { transform: translateX(5px); }
+
+/* ── Footer ── */
+footer {
   text-align: center;
-  padding: 40px;
+  padding-top: 40px;
+  border-top: 1px solid rgba(0,200,255,.08);
   font-family: 'Share Tech Mono', monospace;
-  font-size: .85rem;
+  font-size: .68rem;
+  letter-spacing: .14em;
   color: var(--muted);
+  text-transform: uppercase;
 }
 
 /* ── Animations ── */
 @keyframes fadeDown {
-  from { opacity: 0; transform: translateY(-20px); }
+  from { opacity: 0; transform: translateY(-18px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(20px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-@keyframes slideIn {
-  from { transform: translateX(100%); }
-  to   { transform: translateX(0); }
-}
 
-/* ng-hide transition */
-.ng-hide-add, .ng-hide-remove { transition: opacity .2s; }
-.ng-hide { opacity: 0 !important; }
-
-/* ── Edge label backgrounds ── */
-text.lbl {
-  paint-order: stroke fill;
-  stroke: #080c14;
-  stroke-width: 6px;
-  stroke-linejoin: round;
-}
-
-/* ── Zoom Controls ── */
-.diagram {
-  position: relative;
-}
-.zoom-controls {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  z-index: 10;
-}
-.zoom-btn {
-  width: 32px;
-  height: 32px;
-  background: rgba(5,20,40,.92);
-  border: 1px solid rgba(0,200,255,.3);
-  border-radius: 6px;
-  color: #00c8ff;
-  font-size: 1rem;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: 'Share Tech Mono', monospace;
-  transition: border-color .2s, background .2s;
-  user-select: none;
-}
-.zoom-btn:hover { background: rgba(0,200,255,.15); border-color: #00c8ff; }
-.zoom-btn.reset { font-size: .6rem; letter-spacing: .05em; color: var(--muted); border-color: rgba(255,255,255,.12); }
-.zoom-btn.reset:hover { color: var(--text); border-color: rgba(255,255,255,.3); }
-.zoom-level {
-  text-align: center;
-  font-family: 'Share Tech Mono', monospace;
-  font-size: .62rem;
-  color: var(--muted);
-  padding: 2px 0;
-}
-.diagram-viewport {
-  width: 100%;
-  overflow: hidden;
-  border-radius: 8px;
-  cursor: grab;
-  background: transparent;
-}
-.diagram-viewport.panning { cursor: grabbing; }
-.diagram-viewport svg.arch {
-  transform-origin: 0 0;
-  display: block;
-  transition: none;
-  text-rendering: geometricPrecision;
-  shape-rendering: geometricPrecision;
-}
-
-/* CSS glow replaces rasterising SVG feGaussianBlur filters */
-svg.arch .node.cat-gateway g  { filter: drop-shadow(0 0 5px rgba(0,200,255,.45)); }
-svg.arch .node.cat-infra g    { filter: drop-shadow(0 0 5px rgba(0,200,255,.35)); }
+.module-card { animation: fadeDown .65s ease both; }
+.module-card:nth-child(1) { animation-delay: .12s; }
+.module-card:nth-child(2) { animation-delay: .22s; }
+.module-card:nth-child(3) { animation-delay: .32s; }
 </style>
 </head>
-
-<body ng-controller="BnkCtrl" ng-class="'filter-' + activeFilter">
-
-<!-- ═══ DETAIL PANEL (AngularJS) ═══ -->
-<div class="detail-overlay" ng-if="selectedCard" ng-click="closePanel($event)">
-  <div class="detail-panel" ng-click="$event.stopPropagation()">
-    <button class="dp-close" ng-click="closePanel()">✕ close</button>
-    <div class="dp-stripe" ng-style="{background: selectedCard.color}"></div>
-    <div class="dp-category">{{ selectedCard.category }}</div>
-    <h2 ng-style="{color: selectedCard.color}">{{ selectedCard.name }}</h2>
-    <p ng-bind-html="selectedCard.html"></p>
-    <a class="dp-link" ng-href="{{ selectedCard.url }}" target="_blank"
-       ng-style="{color: selectedCard.color, borderColor: selectedCard.color}">
-      ↗ View documentation
-    </a>
-  </div>
-</div>
-
+<body>
 <div class="page">
 
-  <!-- ═══ HEADER ═══ -->
   <header>
-    <div class="eyebrow">F5 BIG-IP Next for Kubernetes</div>
-    <h1>Custom Resource Connections</h1>
-    <p>How BNK CRs compose to define traffic policy from infrastructure to workload</p>
+    <div class="eyebrow">F5 · Principal Engineering · Kubernetes Training</div>
+    <h1>Networking &amp; Automation<br>Training Portal</h1>
+    <p>Interactive training modules covering BIG-IP Next for Kubernetes custom resources, NGINX inference routing, and SR-IOV network virtualization on OpenShift.</p>
   </header>
 
-  <!-- ═══ FILTER BAR (AngularJS) ═══ -->
-  <div class="filter-bar">
-    <button class="filter-btn all"      ng-class="{active: activeFilter==='all'}"      ng-click="setFilter('all')">All</button>
-    <button class="filter-btn gateway"  ng-class="{active: activeFilter==='gateway'}"  ng-click="setFilter('gateway')">Gateway / Routing</button>
-    <button class="filter-btn network"  ng-class="{active: activeFilter==='network'}"  ng-click="setFilter('network')">Network / Egress</button>
-    <button class="filter-btn security" ng-class="{active: activeFilter==='security'}" ng-click="setFilter('security')">Security / Firewall</button>
-    <button class="filter-btn policy"   ng-class="{active: activeFilter==='policy'}"   ng-click="setFilter('policy')">Policy Attachment</button>
-    <button class="filter-btn infra"    ng-class="{active: activeFilter==='infra'}"    ng-click="setFilter('infra')">Instance / Infra</button>
-    <button class="filter-btn ai"       ng-class="{active: activeFilter==='ai'}"       ng-click="setFilter('ai')">AI / Analytics</button>
+  <div class="modules">
+
+    <!-- Module 01 — BNK Custom Resources -->
+    <a href="BNK_Diagram_v4.html" class="module-card">
+      <div class="module-num">Module 01</div>
+      <div class="module-icon">🔗</div>
+      <div class="module-title">BNK Custom Resources</div>
+      <div class="module-desc">
+        Explore how BIG-IP Next for Kubernetes Custom Resources compose to define traffic policy from infrastructure to workload. Interactive connection diagram with live filter controls and per-CR detail panels.
+      </div>
+      <div class="module-tags">
+        <span class="tag">BIG-IP Next</span>
+        <span class="tag">CRDs</span>
+        <span class="tag">AngularJS</span>
+        <span class="tag">Traffic Policy</span>
+      </div>
+      <div class="module-cta">Launch module <span class="arrow">→</span></div>
+    </a>
+
+    <!-- Module 02 — NGINX EPP -->
+    <a href="NGINX-EPP_Visualization_v5.html" class="module-card orange">
+      <div class="module-num">Module 02</div>
+      <div class="module-icon">⚡</div>
+      <div class="module-title">NGINX EPP Example</div>
+      <div class="module-desc">
+        Walk through NGINX Gateway Fabric's Endpoint Policy Protocol inference router. KV-cache aware scheduling, vLLM + LoRA routing, and real-time pod selection — all visualized with animated GSAP flows.
+      </div>
+      <div class="module-tags">
+        <span class="tag">NGINX GF</span>
+        <span class="tag">EPP</span>
+        <span class="tag">vLLM</span>
+        <span class="tag">Inference</span>
+      </div>
+      <div class="module-cta">Launch module <span class="arrow">→</span></div>
+    </a>
+
+    <!-- Module 03 — SR-IOV in OCP -->
+    <a href="OpenShift-SRIOV_Diagram_v4.html" class="module-card purple">
+      <div class="module-num">Module 03</div>
+      <div class="module-icon">🚀</div>
+      <div class="module-title">SR-IOV in OCP</div>
+      <div class="module-desc">
+        Animated walkthrough of SR-IOV pod attachment and traffic flow on OpenShift with F5 BIG-IP Next. Step through network virtualization phases with detailed annotations and a full configuration reference.
+      </div>
+      <div class="module-tags">
+        <span class="tag">OpenShift</span>
+        <span class="tag">SR-IOV</span>
+        <span class="tag">BIG-IP Next</span>
+        <span class="tag">CNI</span>
+      </div>
+      <div class="module-cta">Launch module <span class="arrow">→</span></div>
+    </a>
+
   </div>
 
-  <!-- ═══ LEGEND ═══ -->
-  <div class="legend">
-    <div class="legend-item"><div class="legend-dot" style="background:#00c8ff"></div>Gateway / Routing</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#ff6b35"></div>Network / Egress</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#7fff6e"></div>Security / Firewall</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#c97bff"></div>Policy Attachment</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#ffe066"></div>Instance / Infra</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#00e5cc"></div>AI / Analytics</div>
-    <div class="legend-item">
-      <svg width="28" height="10"><line x1="0" y1="5" x2="20" y2="5" stroke="#00c8ff" stroke-width="1.5" stroke-dasharray="4 3"/><polygon points="20,2 28,5 20,8" fill="#00c8ff"/></svg>
-      references / attaches
-    </div>
-    <div class="legend-item">
-      <svg width="28" height="10"><line x1="0" y1="5" x2="20" y2="5" stroke="#7fff6e" stroke-width="1.5"/><polygon points="20,2 28,5 20,8" fill="#7fff6e"/></svg>
-      selects / applies
-    </div>
-  </div>
-
-  <!-- ═══ DIAGRAM SVG ═══ -->
-  <div class="diagram">
-    <!-- Zoom controls -->
-    <div class="zoom-controls">
-      <button class="zoom-btn" id="zoomIn"  title="Zoom in">+</button>
-      <div    class="zoom-level" id="zoomLevel">100%</div>
-      <button class="zoom-btn" id="zoomOut" title="Zoom out">−</button>
-      <button class="zoom-btn reset" id="zoomReset" title="Reset view">RST</button>
-    </div>
-    <!-- Pannable / zoomable viewport -->
-    <div class="diagram-viewport" id="diagramViewport">
-  <svg class="arch" id="archSvg" viewBox="0 0 1100 520" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <filter id="glow-blue" x="-30%" y="-30%" width="160%" height="160%">
-        <feGaussianBlur stdDeviation="4" result="blur"/>
-        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-      </filter>
-      <filter id="glow-green" x="-30%" y="-30%" width="160%" height="160%">
-        <feGaussianBlur stdDeviation="3" result="blur"/>
-        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-      </filter>
-      <marker id="arr-blue"   markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#00c8ff"/></marker>
-      <marker id="arr-orange" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#ff6b35"/></marker>
-      <marker id="arr-green"  markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#7fff6e"/></marker>
-      <marker id="arr-purple" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#c97bff"/></marker>
-      <marker id="arr-yellow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#ffe066"/></marker>
-      <marker id="arr-teal"   markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#00e5cc"/></marker>
-    </defs>
-
-    <!-- ═══ ROW BANDS ═══ -->
-    <rect x="0" y="10"  width="1100" height="74" rx="4" fill="rgba(255,224,102,.012)"/>
-    <rect x="0" y="140" width="1100" height="80" rx="4" fill="rgba(0,200,255,.018)"/>
-    <rect x="0" y="270" width="1100" height="80" rx="4" fill="rgba(0,200,255,.014)"/>
-    <rect x="0" y="400" width="1100" height="80" rx="4" fill="rgba(0,200,255,.010)"/>
-
-    <!-- ═══ SWIM LANE LABELS ═══ -->
-    <text x="10" y="57"  font-family="Share Tech Mono,monospace" font-size="9" fill="#ffffff" opacity=".18" transform="rotate(-90,10,57)"  text-anchor="middle">INFRA</text>
-    <text x="10" y="187" font-family="Share Tech Mono,monospace" font-size="9" fill="#ffffff" opacity=".18" transform="rotate(-90,10,187)" text-anchor="middle">POLICY</text>
-    <text x="10" y="317" font-family="Share Tech Mono,monospace" font-size="9" fill="#ffffff" opacity=".18" transform="rotate(-90,10,317)" text-anchor="middle">GATEWAY</text>
-    <text x="10" y="447" font-family="Share Tech Mono,monospace" font-size="9" fill="#ffffff" opacity=".18" transform="rotate(-90,10,447)" text-anchor="middle">ROUTES</text>
-
-    <!-- ═══ NODES — ROW 1 ═══ -->
-
-    <!-- F5BigFwPolicy -->
-    <a class="node cat-security" bnk-node="F5BigFwPolicy" style="cursor:pointer">
-    <g transform="translate(80,30)">
-      <rect x="-75" y="0" width="150" height="54" rx="8" fill="#0d180d" stroke="#7fff6e" stroke-width="1.5"/>
-      <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="10" fill="#7fff6e" letter-spacing=".05em">F5BigFwPolicy</text>
-      <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">Firewall policy rules</text>
-      <text x="0" y="47" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#7fff6e" opacity=".6">security / firewall</text>
-    </g>
-    </a>
-
-    <!-- CNEInstance -->
-    <a class="node cat-infra" bnk-node="CNEInstance" style="cursor:pointer">
-    <g transform="translate(430,30)">
-      <rect x="-90" y="0" width="180" height="54" rx="8" fill="#0d1e2e" stroke="#ffe066" stroke-width="1.5"/>
-      <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="11" fill="#ffe066" letter-spacing=".08em">CNEInstance</text>
-      <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">CNE desired-state declaration</text>
-      <text x="0" y="47" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#ffe066" opacity=".6">TMM + control plane</text>
-    </g>
-    </a>
-
-    <!-- F5SPKSnatpool -->
-    <a class="node cat-network" bnk-node="F5SPKSnatpool" style="cursor:pointer">
-    <g transform="translate(950,30)">
-      <rect x="-95" y="0" width="190" height="54" rx="8" fill="#1a1008" stroke="#ff6b35" stroke-width="1.5"/>
-      <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="11" fill="#ff6b35" letter-spacing=".08em">F5SPKSnatpool</text>
-      <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">SNAT IP pool (optional)</text>
-      <text x="0" y="47" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#ff6b35" opacity=".6">BGP advertised</text>
-    </g>
-    </a>
-
-    <!-- ═══ NODES — ROW 2 ═══ -->
-
-    <!-- BNKSecPolicy -->
-    <a class="node cat-security" bnk-node="BNKSecPolicy" style="cursor:pointer">
-    <g transform="translate(80,160)">
-      <rect x="-75" y="0" width="150" height="54" rx="8" fill="#0d180d" stroke="#7fff6e" stroke-width="1.5"/>
-      <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="10" fill="#7fff6e" letter-spacing=".05em">BNKSecPolicy</text>
-      <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">GW or GW Listener attach</text>
-      <text x="0" y="47" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#7fff6e" opacity=".6">security / firewall</text>
-    </g>
-    </a>
-
-    <!-- F5BNKGateway -->
-    <a class="node cat-gateway" bnk-node="F5BNKGateway" style="cursor:pointer">
-    <g transform="translate(690,225)">
-      <rect x="-100" y="0" width="200" height="54" rx="8" fill="#0d1e2e" stroke="#00c8ff" stroke-width="2"/>
-      <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="11" fill="#00c8ff" letter-spacing=".08em">F5BNKGateway</text>
-      <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">IPAM + BIG-IP binding (FIC)</text>
-      <text x="0" y="47" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#00c8ff" opacity=".6">gateway / routing</text>
-    </g>
-    </a>
-
-    <!-- F5SPKEgress -->
-    <a class="node cat-network" bnk-node="F5SPKEgress" style="cursor:pointer">
-    <g transform="translate(950,160)">
-      <rect x="-95" y="0" width="190" height="54" rx="8" fill="#1a1008" stroke="#ff6b35" stroke-width="1.5"/>
-      <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="11" fill="#ff6b35" letter-spacing=".08em">F5SPKEgress</text>
-      <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">Pod egress connectivity</text>
-      <text x="0" y="47" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#ff6b35" opacity=".6">SNAT none/automap/pool</text>
-    </g>
-    </a>
-
-    <!-- ═══ NODES — ROW 3 ═══ -->
-
-    <!-- BNKNetPolicy -->
-    <a class="node cat-policy" bnk-node="BNKNetPolicy" style="cursor:pointer">
-    <g transform="translate(80,290)">
-      <rect x="-75" y="0" width="150" height="54" rx="8" fill="#0f1a10" stroke="#c97bff" stroke-width="1.5"/>
-      <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="10" fill="#c97bff" letter-spacing=".05em">BNKNetPolicy</text>
-      <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">GW or GW Listener attach</text>
-      <text x="0" y="47" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#c97bff" opacity=".6">policy attachment</text>
-    </g>
-    </a>
-
-    <!-- Gateway -->
-    <a class="node cat-gateway" bnk-node="Gateway" style="cursor:pointer">
-    <g transform="translate(430,225)">
-      <rect x="-100" y="0" width="200" height="54" rx="8" fill="#0d2030" stroke="#00c8ff" stroke-width="1.5" stroke-dasharray="5 3"/>
-      <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="11" fill="#00c8ff" letter-spacing=".08em">Gateway</text>
-      <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">K8s Gateway API resource</text>
-      <text x="0" y="47" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#00c8ff" opacity=".6">listeners · up to 64</text>
-    </g>
-    </a>
-
-    <!-- Prometheus -->
-    <a class="node cat-ai" bnk-node="Prometheus" style="cursor:pointer">
-    <g transform="translate(950,290)">
-      <rect x="-80" y="0" width="160" height="54" rx="8" fill="#1a1008" stroke="#00e5cc" stroke-width="1.5"/>
-      <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="11" fill="#00e5cc" letter-spacing=".08em">Prometheus</text>
-      <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">LLM inference metrics</text>
-      <text x="0" y="47" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#00e5cc" opacity=".6">NIM / vLLM scrape</text>
-    </g>
-    </a>
-
-    <!-- ═══ NODES — ROW 4 ═══ -->
-
-    <!-- cne iRule -->
-    <a class="node cat-policy" bnk-node="cne iRule" style="cursor:pointer">
-    <g transform="translate(80,420)">
-      <rect x="-75" y="0" width="150" height="54" rx="8" fill="#12101a" stroke="#c97bff" stroke-width="1.5" stroke-dasharray="5 3"/>
-      <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="10" fill="#c97bff" letter-spacing=".05em">cne iRule</text>
-      <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">TCL iRule definition</text>
-      <text x="0" y="47" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#c97bff" opacity=".6">configmap / inline</text>
-    </g>
-    </a>
-
-    <!-- HTTPRoute -->
-    <a class="node cat-gateway" bnk-node="HTTPRoute" style="cursor:pointer">
-    <g transform="translate(340,420)">
-      <rect x="-90" y="0" width="180" height="54" rx="8" fill="#0d1e2e" stroke="#00c8ff" stroke-width="1.5"/>
-      <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="11" fill="#00c8ff" letter-spacing=".08em">HTTPRoute</text>
-      <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">L7 routing &amp; path rules</text>
-      <text x="0" y="47" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#00c8ff" opacity=".6">standard gateway API</text>
-    </g>
-    </a>
-
-    <!-- L4Route -->
-    <a class="node cat-gateway" bnk-node="L4Route" style="cursor:pointer">
-    <g transform="translate(540,420)">
-      <rect x="-90" y="0" width="180" height="54" rx="8" fill="#0d1e2e" stroke="#00c8ff" stroke-width="1.5"/>
-      <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="11" fill="#00c8ff" letter-spacing=".08em">L4Route</text>
-      <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">TCP/UDP routing rules</text>
-      <text x="0" y="47" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#00c8ff" opacity=".6">gateway / routing</text>
-    </g>
-    </a>
-
-    <!-- f5-analyzer -->
-    <a class="node cat-ai" bnk-node="f5-analyzer" style="cursor:pointer">
-    <g transform="translate(950,420)">
-      <rect x="-80" y="0" width="160" height="54" rx="8" fill="#0d1e2e" stroke="#00e5cc" stroke-width="2"/>
-      <text x="0" y="18" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="11" fill="#00e5cc" letter-spacing=".08em">f5-analyzer</text>
-      <text x="0" y="34" text-anchor="middle" font-family="Exo 2,sans-serif" font-size="9.5" fill="#8aaccc" font-weight="300">LLM traffic analyzer pod</text>
-      <text x="0" y="47" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="8" fill="#00e5cc" opacity=".6">monitors routes · DPU</text>
-    </g>
-    </a>
-
-    <!-- ═══ EDGES ═══ -->
-
-    <!-- BNKSecPolicy → F5BigFwPolicy -->
-    <line x1="80" y1="157" x2="80" y2="87" stroke="#7fff6e" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-green)"/>
-    <text x="88" y="128" font-family="Share Tech Mono,monospace" font-size="9" fill="#7fff6e" class="lbl" opacity=".7">parentRef</text>
-
-    <!-- BNKSecPolicy → Gateway -->
-    <line x1="155" y1="187" x2="328" y2="250" stroke="#7fff6e" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-green)"/>
-    <text text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="9" fill="#7fff6e" class="lbl" opacity=".7" transform="translate(245,207) rotate(20)">attaches to GW or GW Listener</text>
-
-    <!-- BNKNetPolicy → Gateway -->
-    <line x1="155" y1="317" x2="328" y2="252" stroke="#c97bff" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-purple)"/>
-    <text text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="9" fill="#c97bff" class="lbl" opacity=".7" transform="translate(246,297) rotate(-21)">attaches to GW or GW Listener</text>
-
-    <!-- BNKNetPolicy → cne iRule -->
-    <line x1="80" y1="347" x2="80" y2="417" stroke="#c97bff" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-purple)"/>
-    <text x="88" y="390" font-family="Share Tech Mono,monospace" font-size="9" fill="#c97bff" class="lbl" opacity=".7">parentRef</text>
-
-    <!-- CNEInstance → Gateway -->
-    <line x1="430" y1="84" x2="430" y2="222" stroke="#ffe066" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-yellow)"/>
-    <text x="438" y="158" font-family="Share Tech Mono,monospace" font-size="9" fill="#ffe066" class="lbl" opacity=".7">provisions</text>
-
-    <!-- F5BNKGateway → Gateway -->
-    <line x1="588" y1="252" x2="533" y2="252" stroke="#00c8ff" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-blue)"/>
-    <text x="539" y="246" font-family="Share Tech Mono,monospace" font-size="9" fill="#00c8ff" class="lbl" opacity=".7">binds IP</text>
-
-    <!-- HTTPRoute → Gateway -->
-    <line x1="370" y1="417" x2="415" y2="282" stroke="#00c8ff" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-blue)"/>
-    <text text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="9" fill="#00c8ff" class="lbl" opacity=".7" transform="translate(381,346) rotate(-73)">parentRef</text>
-
-    <!-- L4Route → Gateway -->
-    <line x1="510" y1="417" x2="445" y2="282" stroke="#00c8ff" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-blue)"/>
-    <text text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="9" fill="#00c8ff" class="lbl" opacity=".7" transform="translate(488,344) rotate(64)">parentRef</text>
-
-    <!-- F5SPKEgress → F5SPKSnatpool -->
-    <line x1="950" y1="157" x2="950" y2="87" stroke="#ff6b35" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arr-orange)"/>
-    <text x="958" y="128" font-family="Share Tech Mono,monospace" font-size="9" fill="#ff6b35" class="lbl" opacity=".7">opt. ref pool</text>
-
-    <!-- CNEInstance → F5SPKEgress -->
-    <line x1="520" y1="57" x2="855" y2="187" stroke="#ff6b35" stroke-width="1.5" marker-end="url(#arr-orange)"/>
-    <text text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="9" fill="#ff6b35" class="lbl" opacity=".7" transform="translate(691,111) rotate(21)">egress via net-attach-def</text>
-
-    <!-- Prometheus → f5-analyzer -->
-    <line x1="950" y1="344" x2="950" y2="417" stroke="#00e5cc" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr-teal)"/>
-    <text x="958" y="386" font-family="Share Tech Mono,monospace" font-size="9" fill="#00e5cc" class="lbl" opacity=".7">metrics</text>
-
-    <!-- f5-analyzer → HTTPRoute (center-bottom to center-bottom) -->
-    <line x1="950" y1="474" x2="950" y2="500" stroke="#00e5cc" stroke-width="1.5"/>
-    <line x1="340" y1="500" x2="950" y2="500" stroke="#00e5cc" stroke-width="1.5"/>
-    <line x1="340" y1="500" x2="340" y2="477" stroke="#00e5cc" stroke-width="1.5" marker-end="url(#arr-teal)"/>
-    <text x="645" y="516" font-family="Share Tech Mono,monospace" font-size="9" fill="#00e5cc" class="lbl" opacity=".7">sends weights to HTTPRoute</text>
-
-  </svg>
-    </div><!-- /diagram-viewport -->
-  </div><!-- /diagram -->
-
-  <!-- ═══ SEARCH BAR (AngularJS) ═══ -->
-  <div class="search-wrap">
-    <input class="search-input" type="text" ng-model="searchQuery"
-           placeholder="Search custom resources…" autocomplete="off"/>
-    <span class="search-count">{{ filteredCards().length }} / {{ cards.length }} resources</span>
-  </div>
-
-  <!-- ═══ CARDS (AngularJS ng-repeat) ═══ -->
-  <div class="cards">
-    <div class="card"
-         ng-repeat="c in filteredCards()"
-         ng-style="{'--stripe': c.color}"
-         ng-class="{'card-selected': selectedCard && selectedCard.name === c.name}"
-         ng-click="selectCard(c.name)">
-      <h3>{{ c.name }}</h3>
-      <p ng-bind-html="c.html"></p>
-      <a class="card-link" ng-href="{{ c.url }}" target="_blank"
-         ng-style="{color: c.color}"
-         ng-click="$event.stopPropagation()">↗ docs</a>
-    </div>
-    <div class="no-results" ng-if="filteredCards().length === 0">
-      No resources match "{{ searchQuery }}" in this category.
-    </div>
-  </div>
+  <footer>F5 · Principal Engineering · Kubernetes Platform Training · 2026</footer>
 
 </div>
-
-<script>
-angular.module('bnkApp', [])
-
-// Allow HTML strings in ng-bind-html
-.config(['$compileProvider', function($cp) {
-  $cp.aHrefSanitizationWhitelist(/^\s*(https?|ftp|mailto|tel):/);
-}])
-
-// bnk-node directive: clicking an SVG <a> opens the detail panel instead of navigating
-.directive('bnkNode', function() {
-  return {
-    restrict: 'A',
-    link: function(scope, elem, attrs) {
-      elem.on('click', function(e) {
-        e.preventDefault();
-        scope.$apply(function() {
-          scope.selectCard(attrs.bnkNode);
-        });
-      });
-    }
-  };
-})
-
-.controller('BnkCtrl', ['$scope', '$sce', function($scope, $sce) {
-
-  $scope.activeFilter = 'all';
-  $scope.searchQuery  = '';
-  $scope.selectedCard = null;
-
-  // ── Card data ─────────────────────────────────────────────────────
-  $scope.cards = [
-    {
-      name: 'CNEInstance',
-      category: 'Instance / Infra',
-      cat: 'infra',
-      color: '#ffe066',
-      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/cneinstance-parameters.html',
-      desc: 'Declares the desired state of a BIG-IP Cloud-Native Edition (CNE) instance. Deploys the underlying data-plane component — the F5 Traffic Management Microkernel (TMM) workload — along with its control-plane components. Configures product type, deployment size, Gateway API enablement, optional modules (firewall ACL, intrusion prevention, intelligent LB, CGNAT, dynamic routing), networking, and registry settings. All other CRs depend on a running CNE instance.'
-    },
-    {
-      name: 'F5BNKGateway',
-      category: 'Gateway / Routing',
-      cat: 'gateway',
-      color: '#00c8ff',
-      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/custom-resource-definitions/bnk-bnkgateway.html',
-      desc: 'Used with the F5 IPAM Controller (FIC) to automatically allocate VIP addresses for a Gateway. <strong style="color:#00c8ff">Note:</strong> Using BNKGateway in BIG-IP for Kubernetes is optional. <a href="https://clouddocs.f5.com/bigip-next-for-kubernetes/2.1.0/bnk-ficforgatewayapi.html" target="_blank" style="color: orange;">Example</a>'
-    },
-    {
-      name: 'Gateway',
-      category: 'Gateway / Routing',
-      cat: 'gateway',
-      color: '#00c8ff',
-      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/custom-resource-definitions/bnk-gateway-api-gateway.html',
-      desc: 'Standard Kubernetes Gateway API object. Declares listeners (up to 64 per gateway). HTTPRoute and L4Route attach here via <code>parentRef</code>.'
-    },
-    {
-      name: 'HTTPRoute',
-      category: 'Gateway / Routing',
-      cat: 'gateway',
-      color: '#00c8ff',
-      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/custom-resource-definitions/bnk-gateway-api-httproute.html',
-      desc: 'Routing rules that reference a parent Gateway. HTTPRoute handles L7 path-based traffic; L4Route handles TCP/UDP port-based forwarding.'
-    },
-    {
-      name: 'L4Route',
-      category: 'Gateway / Routing',
-      cat: 'gateway',
-      color: '#00c8ff',
-      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/custom-resource-definitions/bnk-gateway-api-l4route.html',
-      desc: 'Defines TCP/UDP port-based routing rules attached to a parent Gateway via <code>parentRef</code>. Complements HTTPRoute for non-HTTP traffic.'
-    },
-    {
-      name: 'BNKNetPolicy',
-      category: 'Policy Attachment',
-      cat: 'policy',
-      color: '#c97bff',
-      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/custom-resource-definitions/bnk-irule-in-gatewayapi.html#gnknetpolicy',
-      desc: 'Attaches iRule or general network policy at the Gateway level or at an individual Listener. Enables custom traffic manipulation without modifying routes.'
-    },
-    {
-      name: 'cne iRule',
-      category: 'Policy Attachment',
-      cat: 'policy',
-      color: '#c97bff',
-      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/custom-resource-definitions/bnk-irule-in-gatewayapi.html',
-      desc: 'The TCL iRule definition (inline or via ConfigMap) referenced by a BNKNetPolicy. Contains the actual traffic logic — header rewrites, redirects, persistence, logging, etc.'
-    },
-    {
-      name: 'F5BigFwPolicy',
-      category: 'Security / Firewall',
-      cat: 'security',
-      color: '#7fff6e',
-      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/bnk-fwpolicy-in-gateway-api.html',
-      desc: 'Declares firewall rules (ACLs, zone policies). Applied to the Gateway so all traffic passing through is inspected before reaching routes.'
-    },
-    {
-      name: 'BNKSecPolicy',
-      category: 'Security / Firewall',
-      cat: 'security',
-      color: '#7fff6e',
-      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/custom-resource-definitions/bnk-bnkSecPolicy.html',
-      desc: 'Higher-level security wrapper that references an F5BigFwPolicy. Provides a Kubernetes-native way to compose and attach security posture to a Gateway.'
-    },
-    {
-      name: 'F5SPKEgress',
-      category: 'Network / Egress',
-      cat: 'network',
-      color: '#ff6b35',
-      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/custom-resource-definitions/spk-egress-crd.html',
-      desc: 'Enables egress connectivity for internal pods that need access to external networks. Supports three SNAT modes: <strong>SNAT none</strong> (pod IP used), <strong>SNAT automap</strong> (TMM external VLAN self-IP, default), or <strong>SNAT pool</strong> (optionally references an F5SPKSnatpool CR). Must also reference an F5SPKDnscache CR for DNS caching. Applied to the namespace where the TMM pod is configured.'
-    },
-    {
-      name: 'F5SPKSnatpool',
-      category: 'Network / Egress',
-      cat: 'network',
-      color: '#ff6b35',
-      url: 'https://clouddocs.f5.com/service-proxy/latest/spk-snatpool-crd.html',
-      desc: 'An optional pool of routable SNAT IP addresses used when F5SPKEgress is configured with <code>SRC_TRANS_SNATPOOL</code>. By default all IPs are advertised via BGP; use prefixList and routeMaps to restrict advertisement. Supports shared SNAT address mode for large-scale deployments where multiple TMM pods share the same SNAT addresses.'
-    },
-    {
-      name: 'Prometheus',
-      category: 'AI / Analytics',
-      cat: 'ai',
-      color: '#00e5cc',
-      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/bnk-nvidia-nim-ai-lb-feature.html',
-      desc: 'Scrapes real-time inference metrics (GPU utilization, queue depth, token throughput) from LLM backends such as NVIDIA NIM and vLLM. Feeds the f5-analyzer pod with the data it needs to make routing decisions.'
-    },
-    {
-      name: 'f5-analyzer',
-      category: 'AI / Analytics',
-      cat: 'ai',
-      color: '#00e5cc',
-      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/use-cases/intelligent-ai-load-balancing/cr-parameters.html',
-      desc: 'An optional BNK pod enabled via CNEInstance (intelligentLB: true). Defined by the <strong>F5BigAnalyzer CR</strong>, it queries Prometheus metrics and runs a script (built-in <em>LLMLoadMonitor</em> or custom) on a schedule to dynamically calculate optimal route weights. It sends updated weights directly to <strong>HTTPRoute</strong> only. Primarily for DPU installations. <a href="https://cwise24.github.io/bnk-cr/bnk_ailoop.html" target="_blank" style="color: orange;"> Example</a>'
-    },
-    {
-      name: 'All BNK CRDs',
-      category: 'Instance / Infra',
-      cat: 'infra',
-      color: '#ffe066',
-      url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/custom-resource-definitions/',
-      desc: 'Consult these custom resource definition (CRD) schemas when creating custom resources. You create custom resources to configure a CNE instance as an instance of an F5 BIG-IP Cloud-Native Edition product.'
-    }
-  ];
-
-  // Compile desc as trusted HTML for ng-bind-html
-  $scope.cards.forEach(function(c) {
-    c.html = $scope.$new ? null : null; // placeholder
-  });
-
-  // We use $sce.trustAsHtml per card
-  $scope.cards = $scope.cards.map(function(c) {
-    c.html = $sce.trustAsHtml(c.desc);
-    return c;
-  });
-
-  // ── Filter & search ───────────────────────────────────────────────
-  $scope.setFilter = function(cat) {
-    $scope.activeFilter = cat;
-  };
-
-  $scope.filteredCards = function() {
-    var q = ($scope.searchQuery || '').toLowerCase();
-    return $scope.cards.filter(function(c) {
-      var catMatch = $scope.activeFilter === 'all' || c.cat === $scope.activeFilter;
-      var qMatch   = !q || c.name.toLowerCase().indexOf(q) > -1 || c.desc.toLowerCase().indexOf(q) > -1;
-      return catMatch && qMatch;
-    });
-  };
-
-  // ── Detail panel ──────────────────────────────────────────────────
-  $scope.selectCard = function(name) {
-    var found = $scope.cards.find(function(c) { return c.name === name; });
-    $scope.selectedCard = found || null;
-  };
-
-  $scope.closePanel = function(e) {
-    $scope.selectedCard = null;
-  };
-
-}]);
-</script>
-
-<!-- ═══ ZOOM / PAN ENGINE ═══ -->
-<script>
-(function() {
-  var MIN_SCALE = 0.4, MAX_SCALE = 4, STEP = 0.2;
-  var scale = 1, panX = 0, panY = 0;
-  var isPanning = false, startX = 0, startY = 0, startPanX = 0, startPanY = 0;
-
-  var viewport  = document.getElementById('diagramViewport');
-  var svg       = document.getElementById('archSvg');
-  var levelEl   = document.getElementById('zoomLevel');
-
-  function applyTransform() {
-    svg.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + scale + ')';
-    levelEl.textContent = Math.round(scale * 100) + '%';
-    // Keep viewport height in sync so the page doesn't jump
-    var naturalH = viewport.clientWidth * (520 / 1100);
-    viewport.style.height = (naturalH * scale + Math.abs(panY) + 40) + 'px';
-  }
-
-  function clampPan() {
-    // Allow some overflow but not losing the diagram entirely
-    var svgW = viewport.clientWidth * scale;
-    var svgH = viewport.clientWidth * (520 / 1100) * scale;
-    panX = Math.min(svgW * 0.8, Math.max(-(svgW * 0.8), panX));
-    panY = Math.min(svgH * 0.8, Math.max(-(svgH * 0.8), panY));
-  }
-
-  function zoomAt(newScale, originX, originY) {
-    // originX/Y are positions within the viewport element
-    var ratio = newScale / scale;
-    panX = originX - ratio * (originX - panX);
-    panY = originY - ratio * (originY - panY);
-    scale = newScale;
-    clampPan();
-    applyTransform();
-  }
-
-  // ── Button controls ──────────────────────────────────────────────
-  document.getElementById('zoomIn').addEventListener('click', function() {
-    var cx = viewport.clientWidth / 2, cy = viewport.clientHeight / 2;
-    zoomAt(Math.min(MAX_SCALE, parseFloat((scale + STEP).toFixed(2))), cx, cy);
-  });
-  document.getElementById('zoomOut').addEventListener('click', function() {
-    var cx = viewport.clientWidth / 2, cy = viewport.clientHeight / 2;
-    zoomAt(Math.max(MIN_SCALE, parseFloat((scale - STEP).toFixed(2))), cx, cy);
-  });
-  document.getElementById('zoomReset').addEventListener('click', function() {
-    scale = 1; panX = 0; panY = 0;
-    viewport.style.height = '';
-    applyTransform();
-  });
-
-  // ── Mouse-wheel zoom (zoom toward cursor) ─────────────────────────
-  viewport.addEventListener('wheel', function(e) {
-    e.preventDefault();
-    var rect    = viewport.getBoundingClientRect();
-    var originX = e.clientX - rect.left;
-    var originY = e.clientY - rect.top;
-    var delta   = e.deltaY < 0 ? STEP : -STEP;
-    var newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE,
-                    parseFloat((scale + delta).toFixed(2))));
-    zoomAt(newScale, originX, originY);
-  }, { passive: false });
-
-  // ── Click-drag to pan ─────────────────────────────────────────────
-  viewport.addEventListener('mousedown', function(e) {
-    // Only pan on left-click without hitting an SVG <a> node
-    if (e.button !== 0) return;
-    isPanning  = true;
-    startX     = e.clientX;
-    startY     = e.clientY;
-    startPanX  = panX;
-    startPanY  = panY;
-    viewport.classList.add('panning');
-  });
-  window.addEventListener('mousemove', function(e) {
-    if (!isPanning) return;
-    panX = startPanX + (e.clientX - startX);
-    panY = startPanY + (e.clientY - startY);
-    clampPan();
-    applyTransform();
-  });
-  window.addEventListener('mouseup', function() {
-    if (!isPanning) return;
-    isPanning = false;
-    viewport.classList.remove('panning');
-  });
-
-  // ── Touch support (pinch-to-zoom + drag) ─────────────────────────
-  var lastTouchDist = null, lastTouchMid = null;
-  viewport.addEventListener('touchstart', function(e) {
-    if (e.touches.length === 2) {
-      var t = e.touches;
-      lastTouchDist = Math.hypot(t[1].clientX - t[0].clientX, t[1].clientY - t[0].clientY);
-      lastTouchMid  = { x: (t[0].clientX + t[1].clientX) / 2,
-                        y: (t[0].clientY + t[1].clientY) / 2 };
-    } else if (e.touches.length === 1) {
-      isPanning = true;
-      startX    = e.touches[0].clientX;
-      startY    = e.touches[0].clientY;
-      startPanX = panX; startPanY = panY;
-    }
-  }, { passive: true });
-  viewport.addEventListener('touchmove', function(e) {
-    if (e.touches.length === 2 && lastTouchDist) {
-      e.preventDefault();
-      var t    = e.touches;
-      var dist = Math.hypot(t[1].clientX - t[0].clientX, t[1].clientY - t[0].clientY);
-      var mid  = { x: (t[0].clientX + t[1].clientX) / 2,
-                   y: (t[0].clientY + t[1].clientY) / 2 };
-      var rect = viewport.getBoundingClientRect();
-      var newS = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale * (dist / lastTouchDist)));
-      zoomAt(newS, mid.x - rect.left, mid.y - rect.top);
-      lastTouchDist = dist;
-      lastTouchMid  = mid;
-    } else if (e.touches.length === 1 && isPanning) {
-      panX = startPanX + (e.touches[0].clientX - startX);
-      panY = startPanY + (e.touches[0].clientY - startY);
-      clampPan(); applyTransform();
-    }
-  }, { passive: false });
-  viewport.addEventListener('touchend', function() {
-    isPanning = false; lastTouchDist = null; lastTouchMid = null;
-  });
-
-  // Initial render
-  applyTransform();
-})();
-</script>
 </body>
 </html>

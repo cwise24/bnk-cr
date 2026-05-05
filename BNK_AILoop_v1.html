@@ -374,6 +374,19 @@ header .sub {
 
 /* ── Animations ── */
 @keyframes fadeDown { from { opacity:0; transform:translateY(-16px); } to { opacity:1; transform:translateY(0); } }
+
+/* ── Back nav ── */
+.back-nav { margin-bottom: 20px; text-align: left; }
+.back-link {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: .72rem; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--muted); text-decoration: none;
+  padding: 6px 14px; border: 1px solid rgba(0,200,255,.12);
+  border-radius: 20px; background: rgba(0,200,255,.04);
+  transition: color .2s, border-color .2s, background .2s;
+}
+.back-link:hover { color: var(--accent); border-color: rgba(0,200,255,.35); background: rgba(0,200,255,.08); }
 @keyframes fadeUp   { from { opacity:0; transform:translateY(16px);  } to { opacity:1; transform:translateY(0); } }
 @keyframes logIn    { from { opacity:0; transform:translateX(-6px);  } to { opacity:1; transform:translateX(0); } }
 @keyframes pulse    { 0%,100% { opacity:1; } 50% { opacity:.3; } }
@@ -388,6 +401,11 @@ header .sub {
 
 <body>
 <div class="page">
+
+<!-- ═══ BACK NAV ═══ -->
+<nav class="back-nav">
+  <a href="BNK_Diagram_v4.html" class="back-link">← BNK Custom Resources</a>
+</nav>
 
 <!-- ═══ HEADER ═══ -->
 <header>
