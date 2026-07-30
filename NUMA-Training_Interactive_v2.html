@@ -1,0 +1,2232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NUMA Explained — from first principles to network tuning</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<style>
+:root{
+  --bg:#080b11; --panel:#111826; --panel2:#161f30; --line:#22304a;
+  --txt:#e2e9f4; --dim:#93a2b9; --accent:#4fd1c5; --accent2:#7aa2f7;
+  --amd:#ff7a45; --intel:#4b9fea; --warn:#f7b955; --bad:#f2637e; --good:#5ddc9a;
+  --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--txt);
+  font:17px/1.72 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased}
+a{color:var(--accent)}
+code,kbd{font-family:var(--mono);font-size:.86em;background:#0a0f18;padding:1px 5px;border-radius:4px;border:1px solid var(--line)}
+
+/* chrome */
+#progress{position:fixed;top:0;left:0;height:3px;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));z-index:300}
+#topbar{position:fixed;top:0;left:0;right:0;z-index:290;background:rgba(8,11,17,.9);
+  backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+#tbrow1{display:flex;align-items:center;gap:14px;padding:9px 18px;flex-wrap:wrap}
+.brand{font-weight:700;font-size:14px;white-space:nowrap}
+.brand span{color:var(--accent)}
+#modeWrap{display:flex;gap:0;border:1px solid var(--line);border-radius:7px;overflow:hidden;margin-left:auto}
+#modeWrap button{background:transparent;border:0;color:var(--dim);font:600 11.5px/1 inherit;
+  padding:8px 13px;cursor:pointer;letter-spacing:.04em;transition:.16s;white-space:nowrap}
+#modeWrap button.on{background:var(--accent);color:#04110f}
+#modeHint{font-size:11.5px;color:var(--dim);white-space:nowrap}
+#navlinks{display:flex;gap:3px;overflow-x:auto;scrollbar-width:none;padding:0 18px 8px}
+#navlinks::-webkit-scrollbar{display:none}
+#navlinks a{font-size:11.5px;color:var(--dim);text-decoration:none;padding:5px 9px;border-radius:5px;white-space:nowrap;transition:.16s}
+#navlinks a:hover,#navlinks a.on{color:var(--txt);background:var(--panel2)}
+
+main{max-width:1060px;margin:0 auto;padding:110px 22px 100px}
+section{padding:70px 0}
+section+section{border-top:1px solid var(--line)}
+h1{font-size:clamp(30px,5.4vw,54px);line-height:1.08;margin:0 0 20px;letter-spacing:-.02em}
+h2{font-size:clamp(23px,3.4vw,34px);margin:0 0 14px;letter-spacing:-.01em}
+h3{font-size:19px;margin:38px 0 12px;color:var(--accent)}
+h4{font-size:15px;margin:26px 0 10px;color:var(--txt)}
+p{margin:0 0 16px;max-width:74ch}
+ul,ol{margin:0 0 16px;padding-left:22px;max-width:74ch}
+li{margin:8px 0}
+.lede{font-size:19px;color:var(--dim)}
+.eyebrow{display:inline-block;font-size:11px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--accent);border:1px solid var(--line);border-radius:20px;padding:4px 13px;margin-bottom:16px}
+
+/* one-minute summary */
+.onemin{background:linear-gradient(180deg,#132033,#101725);border:1px solid #2b4a6b;
+  border-left:4px solid var(--accent);border-radius:0 10px 10px 0;padding:20px 24px;margin:0 0 30px}
+.onemin .t{font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--accent);margin-bottom:10px;font-weight:700}
+.onemin p{margin:0 0 10px;font-size:17px}
+.onemin p:last-child{margin:0}
+.onemin ul{margin:10px 0 0}
+
+/* go deeper */
+details.deep{background:#0c1219;border:1px solid var(--line);border-radius:10px;margin:24px 0;overflow:hidden}
+details.deep>summary{cursor:pointer;padding:13px 18px;list-style:none;font-size:13.5px;
+  color:var(--accent2);font-weight:600;display:flex;align-items:center;gap:9px;transition:.16s;user-select:none}
+details.deep>summary::-webkit-details-marker{display:none}
+details.deep>summary:hover{background:#111a26}
+details.deep>summary::before{content:'▸';font-size:12px;transition:transform .2s;display:inline-block}
+details.deep[open]>summary::before{transform:rotate(90deg)}
+details.deep>summary .tag{font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  border:1px solid #2b4a6b;color:var(--dim);border-radius:4px;padding:2px 7px;margin-left:auto;font-weight:600}
+.deepbody{padding:4px 22px 20px;border-top:1px solid var(--line)}
+.deepbody>*:first-child{margin-top:16px}
+body.essentials details.deep{opacity:.82}
+
+/* panels */
+.callout{border-left:3px solid var(--warn);background:#191510;padding:16px 20px;border-radius:0 8px 8px 0;margin:22px 0}
+.callout.bad{border-color:var(--bad);background:#1c1016}
+.callout.good{border-color:var(--good);background:#0e1a15}
+.callout.info{border-color:var(--accent2);background:#101725}
+.callout .t{font-weight:700;font-size:12.5px;letter-spacing:.05em;text-transform:uppercase;margin-bottom:8px;color:var(--warn)}
+.callout.bad .t{color:var(--bad)} .callout.good .t{color:var(--good)} .callout.info .t{color:var(--accent2)}
+.callout p:last-child,.callout ul:last-child,.callout ol:last-child{margin-bottom:0}
+
+pre{background:#060910;border:1px solid var(--line);border-radius:8px;padding:15px 17px;
+  overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.65;color:#b9c6dc;margin:16px 0}
+pre code{background:none;border:0;padding:0}
+pre .c{color:#5c6b85} pre .v{color:var(--warn)}
+
+table{width:100%;border-collapse:collapse;margin:18px 0;font-size:14.5px}
+th,td{text-align:left;padding:11px 13px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:600}
+tbody tr:hover{background:#0f1523}
+
+/* glossary term */
+.gl{border-bottom:1px dashed var(--accent2);cursor:help;color:#cfe0f7}
+.gl:hover{background:#16233a}
+#glpop{position:absolute;z-index:400;max-width:330px;background:#121b2b;border:1px solid var(--accent2);
+  border-radius:8px;padding:12px 14px;font-size:13.5px;line-height:1.55;color:var(--txt);
+  box-shadow:0 12px 32px rgba(0,0,0,.6);display:none}
+#glpop b{color:var(--accent);display:block;margin-bottom:5px;font-size:12.5px;letter-spacing:.03em}
+
+/* citations */
+sup.cite{font-size:10px;vertical-align:super;margin-left:2px}
+sup.cite a{color:var(--accent2);text-decoration:none;background:#141d2e;border:1px solid var(--line);
+  border-radius:4px;padding:1px 4px}
+sup.cite a:hover{background:var(--accent2);color:#06101f}
+
+/* controls + stage */
+.ctrls{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0}
+.btn{background:var(--panel2);border:1px solid var(--line);color:var(--dim);
+  font:600 12.5px/1 inherit;padding:10px 15px;border-radius:6px;cursor:pointer;transition:.16s}
+.btn:hover{color:var(--txt);border-color:var(--accent)}
+.btn.on{background:var(--accent);color:#04110f;border-color:var(--accent)}
+.btn.amd.on{background:var(--amd);border-color:var(--amd);color:#1a0800}
+.btn.intel.on{background:var(--intel);border-color:var(--intel);color:#02101c}
+.readout{font-size:14px;color:var(--dim);background:#060910;border:1px solid var(--line);
+  border-radius:8px;padding:14px 16px;min-height:80px}
+.readout b{color:var(--accent)}
+svg{display:block;width:100%;height:auto}
+.stage{background:#060910;border:1px solid var(--line);border-radius:10px;padding:16px;margin:18px 0}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:820px){.cols{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px 20px}
+.panel-title{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);margin-bottom:10px}
+
+/* quiz */
+.quiz{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:22px 24px;margin:30px 0}
+.quiz .qh{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin-bottom:16px}
+.q{margin-bottom:24px} .q:last-child{margin-bottom:0}
+.q .qt{font-weight:600;margin-bottom:12px}
+.q.deepq{display:none}
+body.everything .q.deepq{display:block}
+.q .lvl{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent2);
+  border:1px solid #2b4a6b;border-radius:4px;padding:1px 6px;margin-left:8px;vertical-align:middle}
+.opt{display:block;width:100%;text-align:left;background:var(--panel);border:1px solid var(--line);
+  color:#cfd9e8;font:15px/1.5 inherit;padding:11px 14px;border-radius:7px;margin-bottom:8px;cursor:pointer;transition:.15s}
+.opt:hover{border-color:var(--accent2)}
+.opt.right{border-color:var(--good);background:#0f1a15;color:var(--good)}
+.opt.wrong{border-color:var(--bad);background:#1c1116;color:var(--bad)}
+.opt.dim{opacity:.42}
+.expl{display:none;margin-top:10px;font-size:14px;color:var(--dim);border-left:2px solid var(--accent);padding-left:13px}
+.expl.show{display:block}
+
+/* glossary section */
+#glossaryList{display:grid;grid-template-columns:1fr 1fr;gap:2px 22px}
+@media(max-width:820px){#glossaryList{grid-template-columns:1fr}}
+.gterm{padding:11px 0;border-bottom:1px solid #1a2437}
+.gterm b{color:var(--accent);font-size:14px;display:block;margin-bottom:3px}
+.gterm span{font-size:14px;color:var(--dim);line-height:1.55}
+#glFilter{width:100%;background:#0a0f18;border:1px solid var(--line);border-radius:8px;
+  color:var(--txt);font:15px inherit;padding:11px 14px;margin-bottom:18px}
+
+#sources ol{padding-left:24px}
+#sources li{margin:14px 0;font-size:14.5px;color:var(--dim);max-width:80ch}
+#sources li b{color:var(--txt)}
+#sources li.hl{background:#12203a;outline:2px solid var(--accent2);border-radius:6px}
+footer{border-top:1px solid var(--line);padding:32px 0;color:var(--dim);font-size:14px}
+.pathrow{display:flex;gap:12px;align-items:flex-start;margin:14px 0}
+.pathnum{flex:0 0 30px;height:30px;border-radius:50%;background:var(--panel2);border:1px solid var(--line);
+  display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--accent)}
+</style>
+</head>
+<body class="essentials">
+
+<div id="progress"></div>
+<div id="topbar">
+  <div id="tbrow1">
+    <div class="brand">NUMA <span>·</span> Explained</div>
+    <div id="modeHint">Reading level:</div>
+    <div id="modeWrap">
+      <button id="btnEss" class="on">Essentials</button>
+      <button id="btnEvery">Everything</button>
+    </div>
+  </div>
+  <nav id="navlinks">
+    <a href="#start">Start here</a>
+    <a href="#m1">1 · What NUMA is</a>
+    <a href="#m2">2 · Speed &amp; bandwidth</a>
+    <a href="#m3">3 · Seeing it in Linux</a>
+    <a href="#m4">4 · Chip layout settings</a>
+    <a href="#m5">5 · Where your NIC lives</a>
+    <a href="#m6">6 · SR-IOV</a>
+    <a href="#m7">7 · Hugepages</a>
+    <a href="#m8">8 · DPDK</a>
+    <a href="#m9">9 · Packet journey</a>
+    <a href="#m10">10 · Checklist</a>
+    <a href="#glossary">Glossary</a>
+    <a href="#sources">Sources</a>
+  </nav>
+</div>
+
+<div id="glpop"></div>
+
+<main>
+
+<!-- ================= START HERE ================= -->
+<section id="start">
+  <div class="eyebrow">Start here</div>
+  <h1>Your server is fast.<br>Your packets are slow.</h1>
+  <p class="lede">This is a training about one specific reason that happens — and it is a reason
+    that never shows up in a log file.</p>
+
+  <div class="onemin">
+    <div class="t">The problem in plain English</div>
+    <p>You buy a 100 gigabit network card. You put it in a powerful server. You run your software.
+      You measure 40 gigabits.</p>
+    <p>Nothing crashed. Nothing errored. No alarm fired. The card is fine, the software is fine, and
+      the server is fine. They just disagree about <b>where in the machine the work should happen</b>
+      — and that disagreement is expensive.</p>
+    <p>That disagreement has a name: <span class="gl" data-t="numa">NUMA</span>.</p>
+  </div>
+
+  <h3>What you will be able to do by the end</h3>
+  <ul>
+    <li>Explain what NUMA is to someone else, in one or two sentences.</li>
+    <li>Find out which part of a server your network card is attached to, with one command.</li>
+    <li>Recognise the four or five settings that most often get this wrong.</li>
+    <li>Follow a checklist that puts the card, the memory and the processor cores in the same place.</li>
+  </ul>
+
+  <h3>How to use this page</h3>
+  <div class="cols">
+    <div class="panel">
+      <div class="panel-title">Two reading levels</div>
+      <p style="margin:0">Use the <b>Essentials / Everything</b> switch at the top. Essentials gives
+        you the working understanding. Everything opens the detailed panels underneath — the vendor
+        internals, the kernel mechanics, the exact settings. You can also open any single
+        <b>Go deeper</b> panel on its own at any time.</p>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Two aids while you read</div>
+      <p style="margin:0">Any term with a <span class="gl" data-t="dotted">dotted underline</span>
+        has a definition — hover or tap it. Every one also appears in the
+        <a href="#glossary">Glossary</a>. Small blue numbers like<sup class="cite"><a href="#s1">1</a></sup>
+        link to the exact document a fact came from.</p>
+    </div>
+  </div>
+
+  <div class="callout info">
+    <div class="t">No prior knowledge assumed</div>
+    <p>If you have never heard of NUMA, hugepages or DPDK, you are in the right place. Terms are
+      defined the first time they appear. If something is unexplained, that is a defect in this
+      training, not a gap in you.</p>
+  </div>
+</section>
+
+<!-- ================= MODULE 1 ================= -->
+<section id="m1" class="mod">
+  <div class="eyebrow">Module 1</div>
+  <h2>What NUMA actually is</h2>
+
+  <div class="onemin">
+    <div class="t">In one minute</div>
+    <p>A modern server is not one big pool of memory. It is <b>several smaller pools</b>, each one
+      bolted to a specific group of processor cores.</p>
+    <p>A core can reach any pool. But reaching <b>its own</b> pool is fast, and reaching
+      <b>someone else's</b> pool means crossing a link inside the machine — which is slower and has
+      limited capacity.</p>
+    <p>That is it. That is NUMA: <b>N</b>on-<b>U</b>niform <b>M</b>emory <b>A</b>ccess. Memory
+      access is not uniform, because where the memory sits matters.</p>
+  </div>
+
+  <h3>Why servers are built this way</h3>
+  <p>It would be simpler to have one pool of memory shared equally by everything. Older, smaller
+    servers worked exactly like that.</p>
+  <p>The problem is that a single shared pool becomes a traffic jam. Every core wants memory at once,
+    and they all queue for the same path to it. Adding more cores stops helping.</p>
+  <p>So chip designers split memory into groups and gave each group its own path. Now many cores can
+    fetch memory <b>at the same time</b> instead of taking turns. The Linux kernel documentation puts
+    the motive bluntly: this architecture is "a means to provide scalable memory
+    bandwidth."<sup class="cite"><a href="#s1">1</a></sup></p>
+
+  <div class="callout">
+    <div class="t">The catch, and it is the whole point of this training</div>
+    <p>That extra speed is <b>conditional</b>. The same documentation says it only materialises if
+      software arranges for the large majority of memory requests to go to
+      <b>local</b> memory.<sup class="cite"><a href="#s1">1</a></sup></p>
+    <p>NUMA is a deal. The hardware offers you more total speed. In exchange, you have to keep work
+      near its data. Skip your side of the deal and you get the complexity with none of the benefit.</p>
+  </div>
+
+  <h3>Local and remote, side by side</h3>
+  <p>Below, each box is a <span class="gl" data-t="node">NUMA node</span> — one group of cores with
+    its own memory. Watch the two dots. The green one stays home. The red one has to cross.</p>
+
+  <div class="stage">
+    <svg id="svgLocal" viewBox="0 0 900 300" aria-label="Local versus remote memory access">
+      <defs><marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" fill="#4fd1c5"/></marker></defs>
+      <rect x="40" y="40" width="330" height="220" rx="10" fill="#111826" stroke="#22304a"/>
+      <text x="58" y="66" fill="#93a2b9" font-size="12" letter-spacing="2">NODE 0</text>
+      <rect x="62" y="82" width="130" height="70" rx="7" fill="#161f30" stroke="#2b3a56"/>
+      <text x="127" y="113" fill="#e2e9f4" font-size="13" text-anchor="middle">Cores</text>
+      <text x="127" y="131" fill="#5c6b85" font-size="11" text-anchor="middle">the workers</text>
+      <rect x="218" y="82" width="130" height="70" rx="7" fill="#161f30" stroke="#2b3a56"/>
+      <text x="283" y="113" fill="#e2e9f4" font-size="13" text-anchor="middle">Its memory</text>
+      <text x="283" y="131" fill="#5c6b85" font-size="11" text-anchor="middle">close by</text>
+      <path d="M192,117 L214,117" stroke="#4fd1c5" stroke-width="2" marker-end="url(#ar)"/>
+      <rect x="62" y="176" width="286" height="58" rx="7" fill="#0d121c" stroke="#22304a" stroke-dasharray="4 4"/>
+      <text x="205" y="200" fill="#93a2b9" font-size="12" text-anchor="middle">Slots for expansion cards</text>
+      <text x="205" y="220" fill="#5c6b85" font-size="11" text-anchor="middle">a network card here belongs to node 0</text>
+
+      <rect x="530" y="40" width="330" height="220" rx="10" fill="#111826" stroke="#22304a"/>
+      <text x="548" y="66" fill="#93a2b9" font-size="12" letter-spacing="2">NODE 1</text>
+      <rect x="552" y="82" width="130" height="70" rx="7" fill="#161f30" stroke="#2b3a56"/>
+      <text x="617" y="113" fill="#e2e9f4" font-size="13" text-anchor="middle">Cores</text>
+      <text x="617" y="131" fill="#5c6b85" font-size="11" text-anchor="middle">the workers</text>
+      <rect x="708" y="82" width="130" height="70" rx="7" fill="#161f30" stroke="#2b3a56"/>
+      <text x="773" y="113" fill="#e2e9f4" font-size="13" text-anchor="middle">Its memory</text>
+      <rect x="552" y="176" width="286" height="58" rx="7" fill="#0d121c" stroke="#22304a" stroke-dasharray="4 4"/>
+      <text x="695" y="205" fill="#93a2b9" font-size="12" text-anchor="middle">Slots for expansion cards</text>
+
+      <rect x="378" y="96" width="144" height="42" rx="8" fill="#0d121c" stroke="#4fd1c5" stroke-dasharray="5 3"/>
+      <text x="450" y="115" fill="#4fd1c5" font-size="11.5" text-anchor="middle">THE LINK</text>
+      <text x="450" y="130" fill="#5c6b85" font-size="9.5" text-anchor="middle">between nodes</text>
+      <line x1="370" y1="117" x2="378" y2="117" stroke="#22304a" stroke-width="2"/>
+      <line x1="522" y1="117" x2="530" y2="117" stroke="#22304a" stroke-width="2"/>
+
+      <circle id="dotLocal" cx="127" cy="117" r="7" fill="#5ddc9a"/>
+      <circle id="dotRemote" cx="617" cy="117" r="7" fill="#f2637e"/>
+      <text x="127" y="278" fill="#5ddc9a" font-size="11.5" text-anchor="middle">local — short trip, stays home</text>
+      <text id="lblRemote" x="617" y="278" fill="#f2637e" font-size="11.5" text-anchor="middle">remote — long trip, crosses the link</text>
+    </svg>
+  </div>
+
+  <p>Two things to take from that picture.</p>
+  <p><b>First:</b> the red trip still works. Remote memory is not broken or forbidden — it is just
+    slower. Nothing fails, so nothing warns you. That is why this problem hides so well.</p>
+  <p><b>Second:</b> notice the expansion slots at the bottom of each node. A network card plugged into
+    node 0 <b>belongs to node 0</b>. This becomes important in Module 5.</p>
+
+  <details class="deep">
+    <summary>Go deeper — how the Linux kernel defines all this<span class="tag">Advanced</span></summary>
+    <div class="deepbody">
+      <p>The kernel documentation answers "what is NUMA" from two angles.</p>
+      <p><b>The hardware view.</b> A NUMA system is built from multiple assemblies, each of which may
+        contain zero or more <span class="gl" data-t="cpu">CPUs</span>, local memory, and/or I/O
+        buses. The docs call these assemblies <b>cells</b>. Cells are joined by a system interconnect
+        — typically a crossbar or point-to-point links — and those can be aggregated so cells sit at
+        <b>multiple distances</b> from each other, not merely "near" and
+        "far."<sup class="cite"><a href="#s1">1</a></sup></p>
+      <p><b>The software view.</b> Linux divides hardware into abstractions called <b>nodes</b> and
+        maps nodes onto physical cells, hiding some architectural detail. A node may contain zero or
+        more CPUs, memory, and/or I/O buses.<sup class="cite"><a href="#s1">1</a></sup></p>
+      <p>The platforms Linux targets are <b>cache-coherent NUMA</b>
+        (<span class="gl" data-t="ccnuma">ccNUMA</span>): all memory is visible and accessible from
+        any CPU on any cell, and coherency is handled in hardware by the processor
+        <span class="gl" data-t="cache">caches</span> and/or the
+        interconnect.<sup class="cite"><a href="#s1">1</a></sup> That hardware guarantee is precisely
+        why remote access is merely slow rather than impossible.</p>
+      <div class="callout bad">
+        <div class="t">The x86 exception worth knowing</div>
+        <p>On some architectures — x86 included — Linux will <b>hide</b> a node representing a cell
+          with no attached memory, and reassign that cell's CPUs to a node that does have memory. The
+          documented consequence: you <b>cannot assume that all CPUs Linux associates with a given
+          node see the same local memory access times and
+          bandwidth</b>.<sup class="cite"><a href="#s1">1</a></sup></p>
+      </div>
+    </div>
+  </details>
+
+  <div class="quiz" data-quiz="q1"></div>
+</section>
+
+<!-- ================= MODULE 2 ================= -->
+<section id="m2" class="mod">
+  <div class="eyebrow">Module 2</div>
+  <h2>Speed has two meanings</h2>
+
+  <div class="onemin">
+    <div class="t">In one minute</div>
+    <p>When people say memory is "fast," they mean one of two different things, and NUMA affects both.</p>
+    <ul>
+      <li><b>Latency</b> — how long one request takes. Like how long a single delivery takes to arrive.</li>
+      <li><b>Bandwidth</b> — how much data moves per second. Like how many deliveries you can make
+        per hour.</li>
+    </ul>
+    <p>Going remote hurts latency because the trip is longer. It hurts bandwidth for a different and
+      less obvious reason: <b>everything remote has to squeeze through one shared link</b>.</p>
+  </div>
+
+  <h3>Why bandwidth is the one that surprises people</h3>
+  <p>Your memory is not one pipe. It is several parallel pipes, called
+    <span class="gl" data-t="channel">channels</span>. A server might have eight of them. The
+    <span class="gl" data-t="memctrl">memory controller</span> can use all eight
+    <b>at the same time</b>, which is where the big numbers on the spec sheet come from.</p>
+  <p>Think of supermarket checkouts. Eight open tills serve eight customers at once. That is your
+    local memory.</p>
+  <p>Now imagine those eight tills are in a different building, and everyone has to walk through one
+    connecting corridor to reach them. The tills did not get slower. The corridor is the limit now.
+    That corridor is the link between NUMA nodes.</p>
+
+  <h4>Try it</h4>
+  <div class="ctrls" id="bwCtrls">
+    <button class="btn on" data-bw="local">Local — all channels at once</button>
+    <button class="btn" data-bw="remote">Remote — squeezed through the link</button>
+  </div>
+  <div class="stage">
+    <svg id="svgBw" viewBox="0 0 900 300" aria-label="Parallel local memory channels versus a remote bottleneck">
+      <g id="bwChans"></g>
+      <g id="bwLanes"></g>
+      <rect id="bwFabric" x="560" y="152" width="160" height="30" rx="6" fill="#0d121c" stroke="#f2637e" stroke-dasharray="5 3" opacity="0"/>
+      <text id="bwFabricT" x="640" y="146" fill="#f2637e" font-size="10.5" text-anchor="middle" opacity="0">the shared link — everything queues here</text>
+      <rect x="760" y="70" width="112" height="180" rx="8" fill="#161f30" stroke="#2b3a56"/>
+      <text x="816" y="152" fill="#e2e9f4" font-size="12" text-anchor="middle">core</text>
+      <text x="816" y="170" fill="#5c6b85" font-size="10" text-anchor="middle">asking for data</text>
+      <text id="bwCap" x="450" y="284" fill="#93a2b9" font-size="11.5" text-anchor="middle"></text>
+    </svg>
+  </div>
+  <div class="readout" id="bwOut"></div>
+
+  <div class="callout">
+    <div class="t">The rule that follows from this</div>
+    <p>An empty channel gives you nothing. If your server has eight memory channels but memory
+      sticks in only four of them, you have thrown away half your bandwidth before any software runs.
+      The DPDK documentation says to make sure <b>every memory channel has at least one memory stick
+      in it</b>, and calls this one of the most direct effects on
+      performance.<sup class="cite"><a href="#s7">7</a></sup></p>
+  </div>
+
+  <h3>More total speed is not more speed for you</h3>
+  <p>This is the single most useful idea in this module.</p>
+  <p>A two-processor server has roughly twice the memory channels of a one-processor server. That is
+    twice the <b>total</b> bandwidth for the machine. It is <b>not</b> twice the bandwidth for any
+    one piece of software.</p>
+  <p>A program running on one node only gets that node's channels. Adding a second processor does not
+    widen its path. If that program then starts reaching across to the other node's memory, you have
+    added a long trip without adding any speed. It can end up <b>slower</b> than the smaller server.</p>
+
+  <details class="deep">
+    <summary>Go deeper — effective bandwidth, ranks, and what actually sets the ceiling<span class="tag">Advanced</span></summary>
+    <div class="deepbody">
+      <p>The kernel documentation is careful with its wording: it says <b>"effective memory
+        bandwidth"</b>, not peak bandwidth.<sup class="cite"><a href="#s1">1</a></sup> Peak bandwidth
+        is a datasheet property — channel count times transfer rate times bus width. Effective
+        bandwidth is what one thread, on one core, touching one address range, actually gets. On a
+        NUMA machine the two can differ by a large factor, and nothing reports when they do.</p>
+
+      <table>
+        <thead><tr><th>Factor</th><th>What it controls</th><th>How it fails</th></tr></thead>
+        <tbody>
+          <tr><td><b>1 · Channel parallelism</b></td>
+            <td>Memory controllers have several channels that load and store <b>in parallel</b>; the count and distribution vary by controller and configuration.<sup class="cite"><a href="#s6">6</a></sup></td>
+            <td>"Each channel has a bandwidth limit, meaning that if all memory access operations are done on the first channel only, there is a potential bottleneck."<sup class="cite"><a href="#s6">6</a></sup></td></tr>
+          <tr><td><b>2 · Physical population</b></td>
+            <td>DPDK: ensure each memory channel has at least one <span class="gl" data-t="dimm">DIMM</span> inserted, at least 4 GB each.<sup class="cite"><a href="#s7">7</a></sup></td>
+            <td>Flagged as having "one of the most direct effects on performance."<sup class="cite"><a href="#s7">7</a></sup></td></tr>
+          <tr><td><b>3 · Interleave scope</b></td>
+            <td>How many channels one node's address space spreads across. On AMD, the <span class="gl" data-t="nps">NPS</span> setting controls the interleave pattern within a node, and <b>the number of channels interleaved decreases as the NPS setting gets higher</b>.<sup class="cite"><a href="#s5">5</a></sup> On Intel, <span class="gl" data-t="uma">UMA</span> interleaves across all controllers while an <span class="gl" data-t="snc">SNC</span> domain maps to its own controller and channels.<sup class="cite"><a href="#s11">11</a></sup></td>
+            <td>Narrower domains cut latency <em>and</em> cut the channel count any one node can reach. This is the central trade, not a free win.</td></tr>
+          <tr><td><b>4 · Interconnect ceiling</b></td>
+            <td>Anything remote is capped by the link, not by memory. AMD: up to 4 <span class="gl" data-t="xgmi">xGMI</span> links at up to 32 Gbps, each using up to 16 <span class="gl" data-t="pcie">PCIe</span> lanes.<sup class="cite"><a href="#s5">5</a></sup> Intel: up to 4 <span class="gl" data-t="upi">UPI</span> links per processor, x24 wide, up to 16 <span class="gl" data-t="gts">GT/s</span>.<sup class="cite"><a href="#s11">11</a></sup></td>
+            <td>Fixed, shared and finite. Packets, cache-coherency traffic and page-table lookups all compete for it.</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout">
+        <div class="t">Ranks — the second-order term</div>
+        <p>Below channels sit <span class="gl" data-t="rank">ranks</span>. Critically, <b>"the ranks
+          cannot be accessed simultaneously since they share the same data path,"</b> and the physical
+          layout of memory chips on the module does not necessarily relate to the rank
+          count.<sup class="cite"><a href="#s10">10</a></sup> This is why DPDK's
+          <span class="gl" data-t="mempool">mempool</span> library pads objects so each starts on a
+          <em>different channel and rank</em> — spreading addresses so all channels stay equally
+          loaded.<sup class="cite"><a href="#s6">6</a></sup><sup class="cite"><a href="#s10">10</a></sup>
+          Effective bandwidth depends on your access pattern, not only your hardware.</p>
+      </div>
+
+      <div class="callout info">
+        <div class="t">Derived arithmetic — not a vendor claim</div>
+        <p>Everything else here is cited. This paragraph is not, because it is a queueing identity
+          rather than a documented fact. Sustained bandwidth equals outstanding requests divided by
+          latency. If latency rises on the remote path while the number of requests a core can keep
+          in flight stays fixed, <b>bandwidth falls even when no link is saturated</b>. That is why
+          cross-node placement can cost throughput on a system whose link utilisation graphs look
+          comfortable. Verify it on your own platform rather than taking it on faith.</p>
+      </div>
+    </div>
+  </details>
+
+  <div class="quiz" data-quiz="q2"></div>
+</section>
+
+<!-- ================= MODULE 3 ================= -->
+<section id="m3" class="mod">
+  <div class="eyebrow">Module 3</div>
+  <h2>Seeing NUMA on a real machine</h2>
+
+  <div class="onemin">
+    <div class="t">In one minute</div>
+    <p>Linux numbers the nodes: node 0, node 1, and so on. A handful of commands show you the layout.</p>
+    <p>By default Linux tries to give a program memory from the node its core is running on. This is
+      called <b>local allocation</b>, and it usually works.</p>
+    <p>It stops working when the program's threads get moved to another node by the scheduler,
+      because <b>their memory does not move with them</b>. This is the main reason performance-critical
+      software pins its threads to specific cores.</p>
+  </div>
+
+  <h3>The commands worth knowing</h3>
+<pre><span class="c"># How many nodes, which cores in each, and how far apart they are</span>
+numactl --hardware
+
+<span class="c"># A full picture: cores AND expansion cards, grouped by node [5]</span>
+lstopo-no-graphics
+
+<span class="c"># The single most useful file in this whole training.</span>
+<span class="c"># Tells you which node a specific card belongs to. [5][7]</span>
+cat /sys/bus/pci/devices/0000:<span class="v">85</span>:00.0/numa_node
+</pre>
+  <p>That last one prints a number — <code>0</code>, <code>1</code>, and so on. That number is the
+    node your network card lives in. Almost everything else in this training follows from it.</p>
+
+  <div class="callout">
+    <div class="t">Why pinning matters</div>
+    <p>Linux tries to keep a program near its memory. But the kernel documentation is explicit that
+      <b>the scheduler does not take a task's NUMA footprint into account directly</b>. Under enough
+      load imbalance, tasks migrate to other nodes — away from the memory that was allocated for
+      them.<sup class="cite"><a href="#s1">1</a></sup></p>
+    <p>The memory stays put. The thread does not. From that moment on, every access is a remote
+      access. Pinning a thread to a core stops this from happening.</p>
+  </div>
+
+  <details class="deep">
+    <summary>Go deeper — zonelists, fallback, and NUMA memory policy<span class="tag">Kernel internals</span></summary>
+    <div class="deepbody">
+      <h4>Per-node memory management</h4>
+      <ul>
+        <li>For each node with memory, Linux builds an <b>independent memory management subsystem</b>:
+          its own free page lists, in-use lists, usage statistics and locks.<sup class="cite"><a href="#s1">1</a></sup></li>
+        <li>For each memory zone (DMA, DMA32, NORMAL, HIGH_MEMORY, MOVABLE) Linux constructs an ordered
+          <b>zonelist</b> — the sequence of zones and nodes to visit when the chosen zone cannot satisfy
+          an allocation. That situation is called <b>overflow</b> or
+          <b>fallback</b>.<sup class="cite"><a href="#s1">1</a></sup></li>
+        <li>Linux defaults to a <b>node-ordered</b> zonelist: fall back to other zones on the same node
+          before reaching for remote nodes, which are then ordered by NUMA
+          distance.<sup class="cite"><a href="#s1">1</a></sup></li>
+      </ul>
+
+      <h4>Memory policy — the programming interface</h4>
+      <p>Memory policy determines which node the kernel allocates from. It is a <b>programming
+        interface</b> for NUMA-aware applications; <span class="gl" data-t="cpuset">cpusets</span> are
+        the separate administrative mechanism for restricting nodes. When both apply to a task,
+        <b>the cpuset restrictions take priority</b>.<sup class="cite"><a href="#s2">2</a></sup></p>
+      <table>
+        <thead><tr><th>Mode</th><th>Behaviour</th></tr></thead>
+        <tbody>
+          <tr><td><code>MPOL_BIND</code></td><td>Memory must come from the specified node set; allocated from the node in the set with sufficient free memory that is <b>closest to the allocating node</b>.<sup class="cite"><a href="#s2">2</a></sup></td></tr>
+          <tr><td><code>MPOL_PREFERRED</code></td><td>Try the single specified node; on failure search others in order of increasing distance, using platform firmware distance data.<sup class="cite"><a href="#s2">2</a></sup></td></tr>
+          <tr><td><code>MPOL_INTERLEAVE</code></td><td>Interleave allocations at page granularity across the specified nodes.<sup class="cite"><a href="#s2">2</a></sup></td></tr>
+          <tr><td><code>MPOL_PREFERRED_MANY</code></td><td>Prefer a node set; under pressure on all of them, fall back to all existing nodes.<sup class="cite"><a href="#s2">2</a></sup></td></tr>
+          <tr><td><code>MPOL_WEIGHTED_INTERLEAVE</code></td><td>Weighted interleave via <code>/sys/kernel/mm/mempolicy/weighted_interleave/</code> — nodes [0,1] weighted [5,2] places 5 pages on node0 per 2 on node1.<sup class="cite"><a href="#s2">2</a></sup></td></tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        <div class="t">Two scoping details</div>
+        <p>A task policy applies <b>only to pages allocated after the policy is installed</b> — pages
+          already faulted in stay where they are.<sup class="cite"><a href="#s2">2</a></sup> And VMA
+          policies apply only to anonymous pages, are shared across threads, and are <b>not inheritable
+          across <code>exec()</code></b>, so only NUMA-aware applications can use
+          them.<sup class="cite"><a href="#s2">2</a></sup> Setting policy after your memory pools are
+          built achieves nothing.</p>
+      </div>
+      <p>Administrators restrict migration using <code>taskset(1)</code>, <code>numactl(1)</code> and
+        <code>sched_setaffinity(2)</code>, and change allocation behaviour using memory policy.
+        Control groups and cpusets bound what an unprivileged user may
+        request.<sup class="cite"><a href="#s1">1</a></sup></p>
+    </div>
+  </details>
+
+  <div class="quiz" data-quiz="q3"></div>
+</section>
+
+<!-- ================= MODULE 4 ================= -->
+<section id="m4" class="mod">
+  <div class="eyebrow">Module 4</div>
+  <h2>Your chip's NUMA layout is a setting, not a fact</h2>
+
+  <div class="onemin">
+    <div class="t">In one minute</div>
+    <p>Here is the part most people do not expect. <b>How many NUMA nodes your processor has is
+      configurable</b> in the server's <span class="gl" data-t="bios">BIOS</span>. The same physical
+      chip can present itself as one node, two, four, or more.</p>
+    <p>The trade-off is consistent across both vendors:</p>
+    <ul>
+      <li><b>More nodes</b> = shorter distances inside each node = lower latency. But each node has
+        fewer memory channels, so less bandwidth each.</li>
+      <li><b>Fewer nodes</b> = more channels per node = more bandwidth. But longer average distances.</li>
+    </ul>
+    <p>And the part that matters most for networking: <b>this setting changes which node your network
+      card belongs to.</b> Change it, and you must re-check everything.</p>
+  </div>
+
+  <h3>AMD calls it NPS</h3>
+  <p>AMD's setting is <span class="gl" data-t="nps">NPS</span> — NUMA Nodes Per Socket. Click through
+    the options to see the chip divided up different ways. The dashed outlines are the NUMA nodes.</p>
+
+  <div class="ctrls" id="npsCtrls">
+    <button class="btn amd on" data-nps="4">NPS = 4</button>
+    <button class="btn amd" data-nps="2">NPS = 2</button>
+    <button class="btn amd" data-nps="1">NPS = 1</button>
+    <button class="btn amd" data-nps="0">NPS = 0</button>
+    <button class="btn amd" data-nps="L3">Cache as NUMA</button>
+  </div>
+  <div class="stage">
+    <svg id="svgEpyc" viewBox="0 0 900 400" aria-label="AMD chip divided into NUMA nodes">
+      <g id="npsOverlay"></g>
+      <rect x="360" y="60" width="180" height="290" rx="10" fill="#161f30" stroke="#ff7a45" stroke-width="1.5"/>
+      <text x="450" y="86" fill="#ff7a45" font-size="12.5" text-anchor="middle" letter-spacing="1">CENTRAL HUB</text>
+      <text x="450" y="103" fill="#5c6b85" font-size="9.5" text-anchor="middle">connects everything</text>
+      <g id="umcs"></g><g id="ccds"></g><g id="iohubs"></g>
+      <text x="450" y="386" fill="#5c6b85" font-size="10.5" text-anchor="middle">
+        Core groups around a central hub, with memory controllers and card slots
+      </text>
+    </svg>
+  </div>
+  <div class="readout" id="npsOut"></div>
+
+  <h3>Intel calls it Sub-NUMA Clustering</h3>
+  <p>Intel's equivalent is <span class="gl" data-t="snc">SNC</span>. Intel also offers two middle
+    options — Hemisphere and Quadrant — that get some of the benefit without the software needing to
+    know anything about it.<sup class="cite"><a href="#s11">11</a></sup></p>
+
+  <div class="ctrls" id="intelCtrls">
+    <button class="btn intel on" data-mode="UMA">One node (UMA)</button>
+    <button class="btn intel" data-mode="HEMI">Hemisphere</button>
+    <button class="btn intel" data-mode="QUAD">Quadrant</button>
+    <button class="btn intel" data-mode="SNC2">SNC-2</button>
+    <button class="btn intel" data-mode="SNC4">SNC-4</button>
+  </div>
+  <div class="stage">
+    <svg id="svgIntel" viewBox="0 0 900 400" aria-label="Intel chip divided into NUMA domains">
+      <g id="intelOverlay"></g><g id="intelTiles"></g><g id="intelMCs"></g>
+      <text x="450" y="386" fill="#5c6b85" font-size="10.5" text-anchor="middle">
+        A grid of cores with memory controllers on the edges
+      </text>
+    </svg>
+  </div>
+  <div class="readout" id="intelOut"></div>
+
+  <div class="callout bad">
+    <div class="t">Do not "fix" this by turning NUMA off</div>
+    <p>Both vendors offer a setting that presents the whole chip — or on AMD, the whole server — as a
+      single node. It is tempting, because the warnings go away.</p>
+    <p>They go away because you removed the <b>reporting</b>, not the distance. The links are still
+      there and the trips are still long. Your software just lost the ability to see them and avoid
+      them. On AMD's NPS=0 the memory of both processors is interleaved into one address space, so
+      roughly half of any allocation sits on the far side of the machine, invisibly.<sup class="cite"><a href="#s5">5</a></sup></p>
+  </div>
+
+  <div class="callout good">
+    <div class="t">A safe default if you are unsure</div>
+    <p>AMD lists NPS=4 as preferred for low latency and I/O throughput.<sup class="cite"><a href="#s5">5</a></sup>
+      For Intel, if you cannot guarantee your software is NUMA-aware, Quadrant is the BIOS default and
+      needs no software changes.<sup class="cite"><a href="#s11">11</a></sup> Then measure — this
+      training gives you the tools, not a universal answer.</p>
+  </div>
+
+  <details class="deep">
+    <summary>Go deeper — AMD chip anatomy and what each NPS value does<span class="tag">Vendor detail</span></summary>
+    <div class="deepbody">
+      <h4>The physical building blocks</h4>
+      <table>
+        <thead><tr><th>Element</th><th>What it is</th></tr></thead>
+        <tbody>
+          <tr><td><b>CCX</b> — Core Complex</td><td>Up to eight cores sharing a last-level cache. With <span class="gl" data-t="smt">SMT</span> enabled, one CCX supports up to 16 concurrent hardware threads.<sup class="cite"><a href="#s5">5</a></sup></td></tr>
+          <tr><td><b>CCD</b> — Core Complex Die</td><td>Contains one or two CCXs depending on model. 91xx–96xx parts: up to 12 CCDs, one CCX each. 97xx parts: up to 8 CCDs, two CCXs each.<sup class="cite"><a href="#s5">5</a></sup></td></tr>
+          <tr><td><b>IOD</b> — I/O Die</td><td>The central hub. Provides the data path connecting core complexes, memory and I/O; maintains cache coherency; exposes memory channels, PCIe Gen5 and <span class="gl" data-t="cxl">CXL</span>.<sup class="cite"><a href="#s5">5</a></sup></td></tr>
+          <tr><td><b>GMI</b> link</td><td>Each CCD connects to the IOD over its own dedicated Global Memory Interconnect link.<sup class="cite"><a href="#s5">5</a></sup></td></tr>
+          <tr><td><b>UMC</b></td><td>The IOD provides twelve Unified Memory Controllers supporting DDR5.<sup class="cite"><a href="#s5">5</a></sup></td></tr>
+          <tr><td><b>xGMI</b></td><td>Processor-to-processor. Up to 4 links at speeds up to 32 Gbps, each using up to 16 PCIe lanes — a typical two-socket system converts 64 PCIe lanes per socket into these links.<sup class="cite"><a href="#s5">5</a></sup></td></tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        <div class="t">A trade-off not printed on the datasheet</div>
+        <p>Because these processor-to-processor links share the physical connections used by PCIe
+          lanes, a system designer can drop from 4 links to 3 and reclaim lanes — allocating up to 160
+          lanes for PCIe (80 per socket) by using 48 lanes per socket for links instead of
+          64.<sup class="cite"><a href="#s5">5</a></sup> More slots for network cards, less
+          processor-to-processor bandwidth.</p>
+      </div>
+      <h4>What each NPS value does</h4>
+      <ul>
+        <li><b>NPS=4</b> — four nodes per socket, each quadrant its own domain with <b>3 CCDs, 3 UMCs
+          and 1 I/O hub</b>. Memory interleaves across that quadrant's channels. PCIe devices are local
+          to one of the four domains depending on which quadrant carries the device's root
+          complex.<sup class="cite"><a href="#s5">5</a></sup></li>
+        <li><b>NPS=2</b> — two domains, half the cores and half the channels each; memory interleaves
+          across the six channels in each domain.<sup class="cite"><a href="#s5">5</a></sup></li>
+        <li><b>NPS=1</b> — one node per socket. All channels, all cores, all PCIe devices in one
+          node.<sup class="cite"><a href="#s5">5</a></sup></li>
+        <li><b>NPS=0</b> — one domain for the <em>entire system</em> across both sockets, all channels
+          interleaved into a single address space.<sup class="cite"><a href="#s5">5</a></sup></li>
+        <li><b>Cache as NUMA</b> — maps each shared cache to its own node. A 12-CCD part can expose up
+          to <b>12 nodes per socket</b>.<sup class="cite"><a href="#s5">5</a></sup></li>
+      </ul>
+      <div class="callout">
+        <div class="t">Enumeration discipline</div>
+        <p>AMD is explicit: software that needs to understand NUMA topology or core enumeration must
+          use documented operating-system utilities rather than assumptions about internal ordering.
+          Do not hard-code core lists derived from a different BIOS revision.<sup class="cite"><a href="#s5">5</a></sup></p>
+      </div>
+    </div>
+  </details>
+
+  <details class="deep">
+    <summary>Go deeper — Intel's modes, and the fallback that catches people out<span class="tag">Vendor detail</span></summary>
+    <div class="deepbody">
+      <p>Intel frames the problem physically. As core, memory-controller and interconnect density grow
+        on-die while geometry shrinks, <b>the time to move data from one side of the die to the other
+        increases</b>. Sub-NUMA clustering exists to shorten those
+        traversals.<sup class="cite"><a href="#s11">11</a></sup></p>
+      <table>
+        <thead><tr><th>Mode</th><th>Behaviour</th><th>Software impact</th></tr></thead>
+        <tbody>
+          <tr><td><b>UMA</b></td>
+            <td>A single contiguous address space interleaved among all memory controllers; all cores have equal access.<sup class="cite"><a href="#s11">11</a></sup></td>
+            <td>No way to optimise for nearest resources; a core may be served by a controller or cache slice on the opposite side of the die.<sup class="cite"><a href="#s11">11</a></sup></td></tr>
+          <tr><td><b>Hemisphere / Quadrant</b></td>
+            <td>Two or four domains. Every core still reaches all controllers, but a hash function routes each request to the <b>closest memory controller within the same domain</b>.<sup class="cite"><a href="#s11">11</a></sup></td>
+            <td>No software changes required. Better than UMA, <b>not as good as SNC</b>. Quadrant is the default.<sup class="cite"><a href="#s11">11</a></sup></td></tr>
+          <tr><td><b>SNC-2 / SNC-4</b></td>
+            <td>Two or four localisation domains. In SNC-2 a domain holds half the processors, half the cache banks, and one memory controller with its channels.<sup class="cite"><a href="#s11">11</a></sup></td>
+            <td>Cores see <b>lower cache and memory latency</b> for in-domain addresses. Needs BIOS enablement, symmetric memory population, and NUMA-optimised software — meet all three and it is the best-performing mode.<sup class="cite"><a href="#s11">11</a></sup></td></tr>
+        </tbody>
+      </table>
+      <div class="callout bad">
+        <div class="t">Asymmetric memory silently downgrades your mode</div>
+        <p>The mode the BIOS actually uses is dictated by memory symmetry. If symmetry cannot be met
+          for Quadrant, Hemisphere is used; if there is still insufficient symmetrical memory, the
+          system defaults to UMA.<sup class="cite"><a href="#s11">11</a></sup> Adding or removing
+          memory sticks can therefore change your NUMA behaviour without anyone touching a setting.</p>
+      </div>
+      <div class="callout good">
+        <div class="t">SNC does not shrink your cache</div>
+        <p>Every address has a unique location in the last-level cache and is never duplicated.
+          Localisation applies only to addresses mapped to controllers in the <em>same</em> socket;
+          remote-socket addresses are uniformly distributed across all cache banks regardless of mode.
+          The entire socket cache capacity stays available to each core, and reported capacity is
+          unaffected.<sup class="cite"><a href="#s11">11</a></sup></p>
+      </div>
+      <h4>Reference figures — Xeon Scalable Max Series</h4>
+      <ul>
+        <li><b>4 memory controllers / 4 sub-NUMA clusters</b> per socket.<sup class="cite"><a href="#s11">11</a></sup></li>
+        <li>Up to <b>8 channels of DDR5</b> per processor (up to 4800 <span class="gl" data-t="mts">MT/s</span> at one module per channel).<sup class="cite"><a href="#s11">11</a></sup></li>
+        <li>Up to <b>4 UPI links, x24 wide, up to 16 GT/s</b> — the processor-to-processor path.<sup class="cite"><a href="#s11">11</a></sup></li>
+        <li><b>80 PCIe lanes per processor</b>, PCIe Gen 5.0.<sup class="cite"><a href="#s11">11</a></sup></li>
+        <li>Up to <b>64 GB <span class="gl" data-t="hbm">HBM</span> per socket</b>. In Flat mode, HBM and normal memory appear as <b>separate NUMA nodes</b>, steerable with <code>numactl</code>.<sup class="cite"><a href="#s11">11</a></sup></li>
+      </ul>
+      <h4>Side by side</h4>
+      <table>
+        <thead><tr><th></th><th>AMD EPYC 9004</th><th>Intel Xeon (Max Series)</th></tr></thead>
+        <tbody>
+          <tr><td><b>Setting</b></td><td>NPS = 0 / 1 / 2 / 4, plus cache-as-NUMA<sup class="cite"><a href="#s5">5</a></sup></td><td>UMA / Hemisphere / Quadrant / SNC-2 / SNC-4<sup class="cite"><a href="#s11">11</a></sup></td></tr>
+          <tr><td><b>Max nodes per socket</b></td><td>Up to 12 with cache-as-NUMA<sup class="cite"><a href="#s5">5</a></sup></td><td>4 sub-NUMA clusters<sup class="cite"><a href="#s11">11</a></sup></td></tr>
+          <tr><td><b>Physical origin</b></td><td>Separate core dies around a central hub<sup class="cite"><a href="#s5">5</a></sup></td><td>One grid of cores with distributed controllers<sup class="cite"><a href="#s11">11</a></sup></td></tr>
+          <tr><td><b>Processor-to-processor</b></td><td>Up to 4 xGMI links, up to 32 Gbps<sup class="cite"><a href="#s5">5</a></sup></td><td>Up to 4 UPI links, x24, up to 16 GT/s<sup class="cite"><a href="#s11">11</a></sup></td></tr>
+          <tr><td><b>No-code-change option</b></td><td>NPS1 / NPS0 — hides topology, does not remove it<sup class="cite"><a href="#s5">5</a></sup></td><td>Hemisphere / Quadrant — hash-routes to nearest controller<sup class="cite"><a href="#s11">11</a></sup></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </details>
+
+  <div class="quiz" data-quiz="q4"></div>
+</section>
+
+<!-- ================= MODULE 5 ================= -->
+<section id="m5" class="mod">
+  <div class="eyebrow">Module 5</div>
+  <h2>Where your network card lives</h2>
+
+  <div class="onemin">
+    <div class="t">In one minute</div>
+    <p>Memory has a location. So does your network card.</p>
+    <p>Cards plug into slots on the motherboard, and each slot is wired to <b>one specific
+      processor</b>. That wiring is physical. You cannot change it in software — only by moving the
+      card to a different slot.</p>
+    <p>So the card's node is the fixed point. Cores and memory are movable. <b>Find the card's node
+      first, then arrange everything else around it.</b></p>
+  </div>
+
+  <h3>One command tells you</h3>
+<pre><span class="c"># Find your network cards and their addresses [7]</span>
+lspci | grep -i ethernet
+
+<span class="c"># Ask which node one of them belongs to [5][7]</span>
+cat /sys/bus/pci/devices/0000:<span class="v">85</span>:00.0/numa_node
+<span class="c"># prints: 1</span>
+</pre>
+  <p>That card belongs to node 1. Your software should run on node 1's cores and use node 1's memory.
+    It really is that direct.</p>
+
+  <h3>What the documentation says</h3>
+  <p>The guidance is consistent and blunt across vendors:</p>
+  <ul>
+    <li>"When inserting NICs into PCI slots always check the caption, such as CPU0 or CPU1 to indicate
+      which socket it is connected to."<sup class="cite"><a href="#s7">7</a></sup></li>
+    <li>"If you are using 2 or more ports from different NICs, it is best to ensure that these NICs are
+      on the same CPU socket."<sup class="cite"><a href="#s7">7</a></sup></li>
+    <li>"To get the best performance, ensure that the core and NICs are in the same
+      socket."<sup class="cite"><a href="#s7">7</a></sup></li>
+    <li>AMD states the same as a three-way rule: place <b>cores, memory, and I/O devices in the same
+      NUMA node</b>.<sup class="cite"><a href="#s5">5</a></sup></li>
+  </ul>
+
+  <div class="callout">
+    <div class="t">Remember Module 4</div>
+    <p>Changing the BIOS node setting changes which node a card reports. So the order of operations
+      matters: <b>set the BIOS first, then read <code>numa_node</code>, then place your software.</b>
+      Reading it before a BIOS change tells you about a machine that no longer exists.</p>
+  </div>
+
+  <details class="deep">
+    <summary>Go deeper — slot bandwidth is a separate problem<span class="tag">Advanced</span></summary>
+    <div class="deepbody">
+      <p>Correct placement in an under-provisioned slot fails just as thoroughly as misplacement.</p>
+<pre><span class="c"># Confirm the link width and speed you actually got [7][8]</span>
+lspci -s <span class="v">85</span>:00.0 -vv | grep LnkSta
+<span class="c">#  LnkSta: Speed 16GT/s, Width x16, ...</span>
+</pre>
+      <p>DPDK advises PCIe Gen3 x8 or x16 slots, because Gen2 does not provide enough bandwidth for
+        two 10 GbE ports and above.<sup class="cite"><a href="#s7">7</a></sup> AMD EPYC supports PCIe
+        generations 1 through 5 depending on the processor family, and the guidance is to use slots
+        that provide adequate bandwidth.<sup class="cite"><a href="#s8">8</a></sup></p>
+      <p>DPDK's AMD platform guide lists overall performance as influenced by BIOS settings, NUMA per
+        socket configuration, memory per NUMA allocation, and <b>proximity to I/O
+        devices</b>.<sup class="cite"><a href="#s8">8</a></sup> For a complete picture of cores and
+        cards per node in one output, use <code>lstopo-no-graphics</code>.<sup class="cite"><a href="#s5">5</a></sup></p>
+    </div>
+  </details>
+
+  <div class="quiz" data-quiz="q5"></div>
+</section>
+
+<!-- ================= MODULE 6 ================= -->
+<section id="m6" class="mod">
+  <div class="eyebrow">Module 6</div>
+  <h2>SR-IOV — one card pretending to be many</h2>
+
+  <div class="onemin">
+    <div class="t">In one minute</div>
+    <p><span class="gl" data-t="sriov">SR-IOV</span> lets a single physical network card present
+      itself to the system as <b>many separate cards</b>. Each virtual copy can be handed to a
+      different virtual machine, container or application, and each one gets near-native speed.</p>
+    <p>The real card is called the <span class="gl" data-t="pf">Physical Function</span>. The virtual
+      copies are <span class="gl" data-t="vf">Virtual Functions</span>.</p>
+    <p><b>The NUMA point:</b> the virtual copies are not real hardware. They are still the one
+      physical card, in the one physical slot, attached to the one node. <b>Every virtual copy
+      inherits the real card's node.</b></p>
+  </div>
+
+  <h3>Why this catches people out</h3>
+  <p>Creating 64 virtual functions feels like spreading load across the machine. It is not. It is 64
+    consumers all funnelling through one card in one slot.</p>
+  <p>If you hand those virtual functions to workers spread across both processors, you have not
+    distributed anything. You have <b>multiplied the number of long trips by 64</b>.</p>
+
+  <div class="callout bad">
+    <div class="t">The rule</div>
+    <p>Check <code>numa_node</code> on the <b>physical</b> card — not on the virtual functions — and
+      place the consumers of those virtual functions on that node.</p>
+  </div>
+
+  <details class="deep">
+    <summary>Go deeper — what SR-IOV is technically, and the IOMMU<span class="tag">Advanced</span></summary>
+    <div class="deepbody">
+      <p>SR-IOV is a <b>PCI Express Extended capability</b> that makes one physical device appear as
+        multiple virtual devices. Virtual Function allocation is controlled dynamically by the
+        Physical Function through registers in the capability. The feature is off by default, and until
+        enabled the PF behaves as a traditional PCIe device. Once on, each VF has its own PCI
+        configuration space accessible by its own Bus/Device/Function routing ID, plus its own memory
+        space mapping its register set — so a VF driver operates on that register set and the VF
+        appears as a real PCI device.<sup class="cite"><a href="#s4">4</a></sup></p>
+      <p>The kernel treats VFs as hot-plugged PCI devices; they work like real PCI devices and need a
+        driver as a normal PCI device would.<sup class="cite"><a href="#s4">4</a></sup></p>
+<pre><span class="c"># Recommended method for new devices: sysfs [4]</span>
+echo <span class="v">8</span> &gt; /sys/bus/pci/devices/0000:<span class="v">85</span>:00.0/sriov_numvfs
+
+<span class="c"># Disable</span>
+echo 0 &gt; /sys/bus/pci/devices/0000:<span class="v">85</span>:00.0/sriov_numvfs
+
+<span class="c"># Stop the host binding a driver to VFs before creating them [4]</span>
+echo 0 &gt; /sys/bus/pci/devices/0000:<span class="v">85</span>:00.0/sriov_drivers_autoprobe
+</pre>
+      <h4>The IOMMU and passthrough mode</h4>
+      <ul>
+        <li>DPDK's Intel guidance: disable virtualization options when testing the physical function,
+          and <b>turn on VT-d if you want to use <span class="gl" data-t="vfio">VFIO</span></b>; add
+          <code>iommu=pt intel_iommu=on</code> to the boot line.<sup class="cite"><a href="#s7">7</a></sup></li>
+        <li>AMD's guidance: place the <span class="gl" data-t="iommu">IOMMU</span> in <b>passthrough
+          mode</b> — <code>iommu=pt amd_iommu=on</code> — to improve host performance. AMD recommends
+          enabling IOMMU in BIOS; it lets operating systems provide additional protection for
+          <span class="gl" data-t="dma">DMA</span>-capable devices.<sup class="cite"><a href="#s5">5</a></sup></li>
+        <li>DPDK exposes <code>--iova-mode &lt;pa|va&gt;</code>, plus <code>--vfio-intr</code> and
+          <code>--vfio-vf-token</code> for VFIO-bound devices.<sup class="cite"><a href="#s9">9</a></sup></li>
+      </ul>
+      <div class="callout">
+        <div class="t">Why passthrough mode does not solve NUMA</div>
+        <p>Passthrough removes per-transaction address remapping from the DMA path. That is a
+          constant-factor win applied <em>everywhere equally</em>. It does not shorten the physical
+          distance a DMA write travels to reach a remote node's memory. NUMA placement is a
+          path-length win. You need both.</p>
+      </div>
+      <h4>Where this is heading</h4>
+      <p>Intel positions <b>Scalable I/O Virtualization</b> as replacing SR-IOV: instead of a complete
+        virtual function interface, it uses lightweight assignable device interfaces optimised for
+        fast data-path access from the guest, interfacing with PCIe or CXL via Process Address Space
+        IDs.<sup class="cite"><a href="#s11">11</a></sup> The NUMA arithmetic is unchanged — it is
+        still one physical device on one slot.</p>
+    </div>
+  </details>
+
+  <div class="quiz" data-quiz="q6"></div>
+</section>
+
+<!-- ================= MODULE 7 ================= -->
+<section id="m7" class="mod">
+  <div class="eyebrow">Module 7</div>
+  <h2>Hugepages</h2>
+
+  <div class="onemin">
+    <div class="t">In one minute</div>
+    <p>Memory is handed out in fixed-size blocks called <span class="gl" data-t="page">pages</span>.
+      The normal size is tiny — 4 kilobytes.</p>
+    <p>The processor keeps a small lookup table so it can find pages quickly. With 4 KB pages, that
+      table fills up fast, and every miss costs time.</p>
+    <p><b>Hugepages</b> are the same memory in much larger blocks — 2 megabytes or 1 gigabyte. Fewer,
+      bigger blocks means far fewer lookups.</p>
+    <p><b>The NUMA connection:</b> hugepages are allocated <b>per node</b>. If you ask for them
+      carelessly, they can all land on the wrong node — and Linux will not tell you.</p>
+  </div>
+
+  <h3>Why the size matters so much</h3>
+  <p>The lookup table is called the <span class="gl" data-t="tlb">TLB</span>. The kernel
+    documentation describes it as "typically a very scarce resource on
+    processor."<sup class="cite"><a href="#s3">3</a></sup> It has room for a limited number of
+    entries, and each entry covers one page.</p>
+  <p>So the amount of memory the processor can find quickly depends on your page size. Same number of
+    entries, much bigger pages, far more reach.</p>
+
+  <div class="stage">
+    <svg id="svgHuge" viewBox="0 0 900 250" aria-label="How page size affects lookup table reach">
+      <text x="30" y="34" fill="#93a2b9" font-size="12" letter-spacing="2">SAME NUMBER OF LOOKUP ENTRIES, DIFFERENT PAGE SIZE</text>
+      <g id="hugeRows"></g>
+    </svg>
+  </div>
+  <div class="readout" id="hugeOut">
+    Mapping the same amount of memory with 2 MB pages instead of 4 KB pages needs <b>512×</b> fewer
+    lookups. With 1 GB pages, <b>262,144×</b> fewer. x86 processors support 4 KB and 2 MB pages, and
+    1 GB where the architecture allows it.<sup class="cite"><a href="#s3">3</a></sup>
+  </div>
+
+  <h3>The second benefit: they stay put</h3>
+  <p>Normal memory can be moved or swapped out to disk when the system is under pressure. That causes
+    sudden, unpredictable pauses — terrible for packet processing.</p>
+  <p>Hugepages are reserved by the kernel, cannot be used for anything else, and
+    <b>cannot be swapped out under memory pressure</b>.<sup class="cite"><a href="#s3">3</a></sup>
+    Your memory stays exactly where you put it.</p>
+
+  <h3>The trap</h3>
+  <div class="callout bad">
+    <div class="t">The silent skew — this is the important part of this module</div>
+    <p>When you ask for hugepages at boot, Linux spreads them across nodes. But if a node does not
+      have enough contiguous free memory, that node is <b>"silently skipped."</b> Linux then
+      <b>"attempt[s] to make up the difference by allocating extra pages on other nodes"</b> that do
+      have room.<sup class="cite"><a href="#s3">3</a></sup></p>
+    <p>So you ask for 24 hugepages and get 24. Success. Except node 2 got zero and node 0 got twelve.
+      Nothing failed. Nothing warned. Your software on node 2 then either cannot find memory, or
+      quietly gets served from a node that is not its own — and you spend a week blaming the network
+      card.</p>
+  </div>
+
+  <h4>How to avoid it</h4>
+<pre><span class="c"># Ask for a specific count on each node, explicitly [3]</span>
+hugepagesz=<span class="v">1G</span> hugepages=<span class="v">0:8,1:8,2:8,3:8</span>
+
+<span class="c"># Then ALWAYS check what you actually got [3][5]</span>
+cat /sys/devices/system/node/node*/meminfo | grep Huge
+</pre>
+  <p>Two lines. The first asks properly. The second verifies. Never skip the second.</p>
+
+  <div class="callout good">
+    <div class="t">How hugepages help the NUMA outcome</div>
+    <ol style="margin:8px 0 0">
+      <li><b>Fewer lookups</b> — and a failed lookup on a remote node is itself a remote memory
+        access, so you cut traffic you never counted.</li>
+      <li><b>Big contiguous blocks</b> — a 1 GB pool backed by one page is guaranteed to sit in one
+        node's memory. The same pool made of 262,144 small pages can get scattered.</li>
+      <li><b>No swapping, no surprise pauses</b> — so what you measure reflects your layout, not
+        random memory-management noise.<sup class="cite"><a href="#s3">3</a></sup></li>
+      <li><b>Per-node visibility</b> — you can audit placement <em>before</em> starting the
+        application.<sup class="cite"><a href="#s3">3</a></sup></li>
+    </ol>
+  </div>
+
+  <div class="callout">
+    <div class="t">And where hugepages make things worse</div>
+    <p>Big pages are a blunter unit. If a node's pool runs out, a 1 GB request cannot be partly
+      satisfied locally — it goes remote entirely, or fails. Coarse granularity turns a gentle
+      slowdown into a cliff. Size each node's pool deliberately rather than letting the kernel spread
+      a single global number for you.</p>
+  </div>
+
+  <details class="deep">
+    <summary>Go deeper — policy interaction, vendor settings and the demote interface<span class="tag">Advanced</span></summary>
+    <div class="deepbody">
+      <h4>Three ways to control placement, plus one from DPDK</h4>
+<pre><span class="c"># 1. Per-node counts at boot [3]</span>
+hugepagesz=<span class="v">1G</span> hugepages=<span class="v">0:8,1:8,2:8,3:8</span>
+
+<span class="c"># 2. Per-node sysfs — ignores mempolicy and cpuset constraints [3]</span>
+echo <span class="v">8</span> &gt; /sys/devices/system/node/node<span class="v">2</span>/hugepages/hugepages-1048576kB/nr_hugepages
+
+<span class="c"># 3. Policy-aware allocation [3]</span>
+numactl -m <span class="v">2</span> echo 20 &gt; /proc/sys/vm/nr_hugepages_mempolicy
+
+<span class="c"># 4. Verify [3][5]</span>
+cat /sys/devices/system/node/node*/meminfo | fgrep Huge
+dpdk-hugepages.py -s
+</pre>
+      <p>Note the asymmetry: writing <code>nr_hugepages</code> <b>ignores mempolicy</b>; writing
+        <code>nr_hugepages_mempolicy</code> honours the writing task's NUMA memory
+        policy.<sup class="cite"><a href="#s3">3</a></sup> Writing the per-node sysfs attribute adjusts
+        that node's count regardless of the task's mempolicy or cpuset
+        constraints.<sup class="cite"><a href="#s3">3</a></sup></p>
+      <p>Also: under a memory policy, hugepages are distributed as if "interleave" had been specified,
+        and if a node in the policy lacks sufficient contiguous memory <b>the allocation will not fall
+        back</b> to a neighbour — deliberately, to avoid imbalancing the
+        pool.<sup class="cite"><a href="#s3">3</a></sup></p>
+      <p>Boot-time allocation is described as the most reliable method because memory has not yet
+        become fragmented.<sup class="cite"><a href="#s3">3</a></sup> A 1 GB page can be split into
+        512 × 2 MB pages via the <code>demote</code> interface.<sup class="cite"><a href="#s3">3</a></sup></p>
+      <h4>Vendor and DPDK guidance</h4>
+      <table>
+        <thead><tr><th>Source</th><th>Recommendation</th></tr></thead>
+        <tbody>
+          <tr><td>DPDK, Intel platforms</td><td><code>default_hugepagesz=1G hugepagesz=1G hugepages=8</code>; mount hugetlbfs before running.<sup class="cite"><a href="#s7">7</a></sup></td></tr>
+          <tr><td>AMD, EPYC 9004</td><td>Bare metal minimum: single socket <code>hugepages=12</code>, dual socket <code>hugepages=24</code>, at 1 GB. Single-socket in multiples of 12, dual in multiples of 24.<sup class="cite"><a href="#s5">5</a></sup></td></tr>
+          <tr><td>AMD, additional</td><td>Disable transparent hugepages: <code>transparent_hugepage=never</code>, plus <code>echo never &gt; /sys/kernel/mm/transparent_hugepage/enabled</code> and <code>/defrag</code>. Also <code>numa_balancing=disable</code>.<sup class="cite"><a href="#s5">5</a></sup></td></tr>
+          <tr><td>DPDK EAL</td><td><code>--huge-dir</code> selects the mount; <code>--huge-unlink</code> controls file reuse; <code>--no-huge</code> falls back to normal memory; <code>--huge-worker-stack</code> puts worker stacks on hugepages.<sup class="cite"><a href="#s9">9</a></sup></td></tr>
+          <tr><td>DPDK troubleshooting</td><td>"If the variance is absent for larger huge pages, then try <code>rte_mem_lock_page</code> on the objects, packets, lookup tables to isolate the issue."<sup class="cite"><a href="#s12">12</a></sup></td></tr>
+        </tbody>
+      </table>
+      <p>DPDK adds a complementary measure: the OS may load and unload memory pages at its own
+        discretion, and those loads hurt because the process waits while the kernel fetches them — so
+        pre-load and lock with <code>mlockall(MCL_CURRENT | MCL_FUTURE)</code>.<sup class="cite"><a href="#s6">6</a></sup></p>
+    </div>
+  </details>
+
+  <div class="quiz" data-quiz="q7"></div>
+</section>
+
+<!-- ================= MODULE 8 ================= -->
+<section id="m8" class="mod">
+  <div class="eyebrow">Module 8</div>
+  <h2>DPDK and the one rule</h2>
+
+  <div class="onemin">
+    <div class="t">In one minute</div>
+    <p><span class="gl" data-t="dpdk">DPDK</span> is a toolkit for processing network packets very
+      fast. It works by <b>bypassing the operating system's normal networking</b> and letting an
+      application talk to the network card directly.</p>
+    <p>Instead of waiting to be told a packet arrived, a DPDK program <b>constantly checks</b> for
+      new packets on a dedicated core. This is called
+      <span class="gl" data-t="pmd">poll mode</span>, and it is why DPDK reaches speeds normal
+      networking cannot.</p>
+    <p>Because DPDK manages its own memory, it also has to make its own NUMA decisions. It gives you
+      the controls — but it will not choose for you.</p>
+  </div>
+
+  <h3>The one rule</h3>
+  <div class="callout good">
+    <div class="t">Straight from the DPDK troubleshooting guide</div>
+    <p>"<b>The NUMA instance for packets or objects from NIC, mempool, and ring should be the
+      same.</b>" The accompanying diagram is captioned "Memory objects have to be close to the device
+      per NUMA."<sup class="cite"><a href="#s12">12</a></sup></p>
+  </div>
+  <p>In plain terms, three things must agree on which node they are in:</p>
+  <ul>
+    <li>the <b>network card</b> — fixed by its slot;</li>
+    <li>the <b>memory pool</b> the packets are stored in — you choose this;</li>
+    <li>the <b>queue</b> the card and software pass packets through — you choose this too.</li>
+  </ul>
+  <p>Add the polling core to that list and you have the whole discipline. Four things, one node.</p>
+
+  <h3>The settings that do it</h3>
+<pre><span class="c"># Run on cores 8 to 15 (pick cores that are on your card's node)</span>
+-l 8-15
+
+<span class="c"># Reserve 4 GB of memory on node 0, and none on node 1 [9]</span>
+--numa-mem 4096,0
+
+<span class="c"># Only use this specific network card, ignore the others [9]</span>
+-a 0000:41:00.0
+</pre>
+  <p>Those three options carry most of the benefit. Everything else is refinement.</p>
+
+  <details class="deep">
+    <summary>Go deeper — the full EAL parameter set and coding guidance<span class="tag">Advanced</span></summary>
+    <div class="deepbody">
+      <p>DPDK states the principle directly: "On a NUMA system, it is preferable to access local
+        memory since remote memory access is slower. In the DPDK, the <b>memzone, ring, rte_malloc and
+        mempool</b> APIs provide a way to create a pool on a specific
+        socket."<sup class="cite"><a href="#s6">6</a></sup> The mempool library specifically provides
+        object alignment, lockless access, <b>NUMA awareness</b>, bulk operations and a per-core
+        cache.<sup class="cite"><a href="#s6">6</a></sup></p>
+      <table>
+        <thead><tr><th>Parameter</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td><code>-l, --lcores</code></td><td>Core list and thread-to-CPU mapping, e.g. <code>--lcores=1@31,2@32</code>. Only one of <code>--lcores</code>, <code>-l</code> or <code>-c</code> at a time.<sup class="cite"><a href="#s9">9</a></sup></td></tr>
+          <tr><td><code>--numa-mem</code></td><td>Preallocate memory <b>per NUMA node</b>: <code>--numa-mem 1024,2048</code> gives 1 GB on node 0 and 2048 MB on node 1.<sup class="cite"><a href="#s9">9</a></sup> (Historically <code>--socket-mem</code>.)</td></tr>
+          <tr><td><code>--numa-limit</code></td><td>Per-node upper limit on memory use; 0 disables the limit for that node.<sup class="cite"><a href="#s9">9</a></sup></td></tr>
+          <tr><td><code>-n, --memory-channels</code></td><td>Number of memory channels — feeds the mempool's channel-spreading padding.<sup class="cite"><a href="#s9">9</a></sup><sup class="cite"><a href="#s10">10</a></sup></td></tr>
+          <tr><td><code>-a / -b</code></td><td>Allow-list or block-list devices so the toolkit only probes ports on the node you intend to use.<sup class="cite"><a href="#s9">9</a></sup></td></tr>
+          <tr><td><code>-S, --service-corelist</code></td><td>Service cores — place these on the same node as the work they serve.<sup class="cite"><a href="#s9">9</a></sup></td></tr>
+        </tbody>
+      </table>
+      <div class="callout bad">
+        <div class="t">Two traps in core assignment</div>
+        <p>DPDK warns that binding multiple lcores to a single physical CPU "can cause problems with
+          poor performance or deadlock when using DPDK rings or memory pools or spinlocks. Such a
+          configuration should only be used with care."<sup class="cite"><a href="#s9">9</a></sup></p>
+        <p>Also note that a mapping like <code>'(1-3)@(31-33)'</code> lets three threads <b>float</b>
+          across three CPUs as the OS decides.<sup class="cite"><a href="#s9">9</a></sup> Floating
+          threads are how carefully-placed memory becomes remote at runtime.</p>
+      </div>
+      <h4>Memory channels and object spreading</h4>
+      <p>Each channel has a bandwidth limit, so concentrating all accesses on the first channel is a
+        bottleneck.<sup class="cite"><a href="#s6">6</a></sup> By default the mempool library
+        <b>spreads object addresses among memory channels</b> using padding, so each object starts on
+        a different channel and rank — valuable for packet buffers where only the first 64 bytes are
+        touched.<sup class="cite"><a href="#s6">6</a></sup><sup class="cite"><a href="#s10">10</a></sup></p>
+      <div class="callout">
+        <div class="t">Connect this back to Module 4</div>
+        <p>Channel spreading assumes the channels are <em>local</em>. The BIOS node setting determines
+          how many channels interleave within a node.<sup class="cite"><a href="#s5">5</a></sup><sup class="cite"><a href="#s11">11</a></sup>
+          Changing that setting silently changes what <code>-n</code> should be and how much parallel
+          bandwidth one node's pool can reach.</p>
+      </div>
+      <h4>Other guidance worth knowing</h4>
+      <ul>
+        <li><b>Do not use standard C library functions in the fast path.</b> <code>memcpy()</code> and
+          <code>strcpy()</code> are not designed for performance; use <code>rte_memcpy()</code>. Avoid
+          malloc-style allocation in the data path — managing a fragmented heap is costly.<sup class="cite"><a href="#s6">6</a></sup></li>
+        <li><b>Avoid partial writes.</b> When devices write to memory through DMA, it costs less if the
+          write covers a full cache line.<sup class="cite"><a href="#s6">6</a></sup> A costlier write
+          across a remote path pays both penalties.</li>
+        <li><b>Prefer per-core variables.</b> Read-write access by several cores to the same memory
+          generates costly cache misses.<sup class="cite"><a href="#s6">6</a></sup> Coherency traffic
+          crosses the same link your packets do.</li>
+        <li><b>Duplicate read-mostly data.</b> DPDK explicitly suggests duplicating data to optimise
+          speed on a NUMA system.<sup class="cite"><a href="#s6">6</a></sup></li>
+        <li><b>Batch size is a dial.</b> Processing packets in batches (default 32) spreads the cost of
+          notifying the card across many packets; a batch of 1 gives lower latency at lower
+          throughput.<sup class="cite"><a href="#s6">6</a></sup></li>
+      </ul>
+    </div>
+  </details>
+
+  <div class="quiz" data-quiz="q8"></div>
+</section>
+
+<!-- ================= MODULE 9 ================= -->
+<section id="m9" class="mod">
+  <div class="eyebrow">Module 9</div>
+  <h2>Following one packet</h2>
+
+  <div class="onemin">
+    <div class="t">In one minute</div>
+    <p>Everything so far comes together here. Watch a single packet travel through the server, first
+      with everything in the right place, then with the memory and cores on the wrong node.</p>
+    <p>The lesson: <b>one placement mistake does not cost you one penalty. It costs you several</b>,
+      because the packet crosses back and forth repeatedly.</p>
+  </div>
+
+  <div class="ctrls">
+    <button class="btn on" id="btnAligned">Everything on one node</button>
+    <button class="btn" id="btnSplit">Card on node 0, work on node 1</button>
+    <button class="btn" id="btnReplay">↻ Replay</button>
+  </div>
+  <div class="stage">
+    <svg id="svgPath" viewBox="0 0 900 340" aria-label="A packet travelling through the server">
+      <g id="pathBg"></g><g id="pathDots"></g>
+    </svg>
+  </div>
+  <div class="readout" id="pathOut"></div>
+
+  <h3>Why it crosses so many times</h3>
+  <div class="pathrow"><div class="pathnum">1</div><div>The card writes the packet into memory. If that memory is on another node, that is one crossing — before the software has even seen it.</div></div>
+  <div class="pathrow"><div class="pathnum">2</div><div>The core reads the packet to look at it. Remote memory again. Second crossing.</div></div>
+  <div class="pathrow"><div class="pathnum">3</div><div>The core tells the card it is finished, by writing to the card. The card is on the other node now. Third crossing.</div></div>
+  <div class="pathrow"><div class="pathnum">4</div><div>The memory is handed back to the pool for reuse. Remote once more. Fourth crossing.</div></div>
+  <p>Four crossings, per packet, at millions of packets per second. That is how a 100 gigabit card
+    ends up delivering 40.</p>
+
+  <div class="callout bad">
+    <div class="t">Why this shows up as inconsistency, not just slowness</div>
+    <p>The link between nodes has a fixed, shared capacity. As cross-node traffic grows, queuing on
+      that link grows faster than the traffic does. The result is that your <b>worst</b> packets get
+      much worse, faster than your <b>average</b> packet does.</p>
+    <p>For a network application, that inconsistency is usually a bigger problem than the average.</p>
+  </div>
+
+  <details class="deep">
+    <summary>Go deeper — the mechanics of each crossing, and a calibration point<span class="tag">Advanced</span></summary>
+    <div class="deepbody">
+      <ol>
+        <li><b>DMA descriptor fetch.</b> The card reads its receive queue. If that queue was allocated
+          on a node other than the one hosting the card's root complex, that read crosses the link
+          before any packet data moves.</li>
+        <li><b>DMA packet write.</b> The device writes packet data into a buffer from the pool. DPDK
+          creates pools on a specific socket for exactly this reason; card, pool and queue should share
+          a NUMA instance.<sup class="cite"><a href="#s12">12</a></sup> Partial cache-line writes cost
+          more than full ones, compounding it.<sup class="cite"><a href="#s6">6</a></sup></li>
+        <li><b>Notification write.</b> The core writes to the device across PCIe. DPDK notes this cost
+          explicitly and spreads it across a batch.<sup class="cite"><a href="#s6">6</a></sup></li>
+        <li><b>Core read.</b> The polling core touches the packet header — a remote memory access if
+          the buffer is remote.<sup class="cite"><a href="#s6">6</a></sup></li>
+        <li><b>Cache behaviour.</b> Under SNC, addresses mapped to remote sockets are uniformly
+          distributed across all cache banks rather than localised, so remote traffic loses the
+          locality benefit SNC provides.<sup class="cite"><a href="#s11">11</a></sup></li>
+        <li><b>Buffer return.</b> Freeing writes back into the pool — remote again, now contending with
+          the coherency traffic from steps 2 and 4.</li>
+      </ol>
+      <div class="callout">
+        <div class="t">A calibration point from AMD's own testing</div>
+        <p>On EPYC 9004 with a vector-mode driver at 100 Gbps and 64-byte packets:
+          <b>90–95 <span class="gl" data-t="mpps">Mpps</span> with 1 core and 3 queues</b>;
+          <b>145 Mpps with 8 cores and 8 queues</b>; <b>149 Mpps with 10 cores and 13
+          queues</b>.<sup class="cite"><a href="#s5">5</a></sup> Those figures come from a guide whose
+          configuration section requires cores, memory and I/O in the same NUMA
+          node.<sup class="cite"><a href="#s5">5</a></sup> Treat them as what correct placement buys on
+          that platform, not a promise for an arbitrary system.</p>
+      </div>
+    </div>
+  </details>
+
+  <div class="quiz" data-quiz="q9"></div>
+</section>
+
+<!-- ================= MODULE 10 ================= -->
+<section id="m10" class="mod">
+  <div class="eyebrow">Module 10</div>
+  <h2>The checklist</h2>
+
+  <div class="onemin">
+    <div class="t">The whole training, in five steps</div>
+    <ol style="margin:8px 0 0">
+      <li><b>Find your network card's node.</b> It is the fixed point — everything else moves around it.</li>
+      <li><b>Pin your software's threads</b> to cores on that node, so they cannot drift.</li>
+      <li><b>Allocate hugepages per node</b> and check what you actually got. Never trust a global number.</li>
+      <li><b>Tell your application which node to use</b> for its memory pools and queues.</li>
+      <li><b>Re-check everything after any BIOS change</b>, because the node numbers may have moved.</li>
+    </ol>
+  </div>
+
+  <h3>The commands, in order</h3>
+<pre><span class="c"># 1. What does this machine look like?</span>
+numactl --hardware
+lstopo-no-graphics
+
+<span class="c"># 2. Which node is my network card on?  [5][7]</span>
+lspci | grep -i ethernet
+cat /sys/bus/pci/devices/0000:<span class="v">85</span>:00.0/numa_node
+
+<span class="c"># 3. Did my hugepages land where I asked?  [3][5]</span>
+cat /sys/devices/system/node/node*/meminfo | grep Huge
+
+<span class="c"># 4. Run pinned to that node  [9]</span>
+./myapp -l <span class="v">8-15</span> --numa-mem <span class="v">4096,0</span> -a 0000:<span class="v">41</span>:00.0
+</pre>
+
+  <div class="callout good">
+    <div class="t">If you remember one thing</div>
+    <p>Find the card's node. Put the cores, the memory and the software on that same node. Verify
+      rather than assume. That single habit prevents most of the problems in this training.</p>
+  </div>
+
+  <details class="deep">
+    <summary>Go deeper — full BIOS, boot and runtime settings<span class="tag">Reference</span></summary>
+    <div class="deepbody">
+      <h4>BIOS</h4>
+      <div class="cols">
+        <div class="panel">
+          <div class="panel-title" style="color:var(--amd)">AMD EPYC</div>
+          <ul style="margin:0">
+            <li><b>NPS</b>: NPS4 preferred for low latency and I/O throughput; a quadrant is 3 CCDs, 3 UMCs, 1 I/O hub.<sup class="cite"><a href="#s5">5</a></sup></li>
+            <li><b>IOMMU</b>: AMD recommends enabling.<sup class="cite"><a href="#s5">5</a></sup></li>
+            <li><b>PCIe ARI Support (SRIOV)</b>: Enabled/Auto.<sup class="cite"><a href="#s5">5</a></sup></li>
+            <li><b>xGMI link width</b> controls exist — relevant if cross-socket traffic is unavoidable.<sup class="cite"><a href="#s5">5</a></sup></li>
+          </ul>
+        </div>
+        <div class="panel">
+          <div class="panel-title" style="color:var(--intel)">Intel Xeon</div>
+          <ul style="margin:0">
+            <li><b>SNC</b> gives the best performance if BIOS enablement, symmetric memory and NUMA-aware software are all satisfied.<sup class="cite"><a href="#s11">11</a></sup></li>
+            <li>Otherwise <b>Quadrant</b> (the default) needs no code changes.<sup class="cite"><a href="#s11">11</a></sup></li>
+            <li>Asymmetric memory silently downgrades Quadrant → Hemisphere → UMA.<sup class="cite"><a href="#s11">11</a></sup></li>
+            <li>Enable <b>VT-d</b> for VFIO; disable virtualization options when testing the physical function.<sup class="cite"><a href="#s7">7</a></sup></li>
+            <li>Populate every memory channel with at least one module.<sup class="cite"><a href="#s7">7</a></sup></li>
+          </ul>
+        </div>
+      </div>
+      <h4>Boot line</h4>
+<pre><span class="c"># Intel platforms [7]</span>
+default_hugepagesz=1G hugepagesz=1G hugepages=8
+isolcpus=2,3,4,5,6,7,8
+iommu=pt intel_iommu=on
+
+<span class="c"># AMD EPYC 9004, dual socket [5]</span>
+default_hugepagesz=1GB hugepagesz=1G hugepages=24
+iommu=pt amd_iommu=on
+isolcpus=8-191,200-383 nohz_full=8-191,200-383 rcu_nocbs=8-191,200-383
+irqaffinity=0-7,96-103
+nohz=on rcu_nocb_poll numa_balancing=disable transparent_hugepage=never nosoftlockup
+processor.max_cstate=0            <span class="c"># low latency; =1 for power management [5]</span>
+pcie_aspm=off                     <span class="c"># NIC low latency mode [8]</span>
+</pre>
+      <h4>Runtime</h4>
+<pre><span class="c"># AMD additional tuning knobs [5]</span>
+echo 0 | tee /proc/sys/vm/zone_reclaim_mode
+systemctl disable irqbalance
+echo never &gt; /sys/kernel/mm/transparent_hugepage/enabled
+echo never &gt; /sys/kernel/mm/transparent_hugepage/defrag
+echo 0 &gt; /sys/kernel/mm/ksm/run
+
+<span class="c"># hugetlbfs mount [7]</span>
+mkdir -p /mnt/huge &amp;&amp; mount -t hugetlbfs nodev /mnt/huge
+</pre>
+      <h4>When throughput is still short</h4>
+      <p>DPDK sequences the investigation: confirm receive configuration and promiscuous mode, isolate
+        drops with <code>rte_eth_dev_stats</code> — <code>q_errors</code> and <code>rx_nombuf</code> —
+        check descriptor counts with <code>rte_eth_dev_info_get</code>, verify
+        <span class="gl" data-t="rss">RSS</span> spread, and confirm performance-critical logic runs on
+        the correct NUMA node and worker core.<sup class="cite"><a href="#s12">12</a></sup> Monitor
+        pool depletion with <code>rte_mempool_avail_count</code>; drops on a specific socket indicate
+        insufficient objects in that socket's pool.<sup class="cite"><a href="#s12">12</a></sup></p>
+    </div>
+  </details>
+
+  <div class="quiz" data-quiz="q10"></div>
+</section>
+
+<!-- ================= GLOSSARY ================= -->
+<section id="glossary">
+  <div class="eyebrow">Reference</div>
+  <h2>Glossary</h2>
+  <p class="lede">Every term used in this training, in plain language. Type to filter.</p>
+  <input id="glFilter" type="text" placeholder="Filter terms — try 'memory', 'card', 'page'…" autocomplete="off">
+  <div id="glossaryList"></div>
+</section>
+
+<!-- ================= SOURCES ================= -->
+<section id="sources">
+  <div class="eyebrow">References</div>
+  <h2>Sources</h2>
+  <p>Every numbered marker in this training links here. All sources are primary vendor or upstream
+    project documentation — no blogs, no forums, no summaries.</p>
+  <ol>
+    <li id="s1"><b>Linux Kernel Documentation — "What is NUMA?"</b>
+      <a href="https://docs.kernel.org/mm/numa.html" target="_blank" rel="noopener">docs.kernel.org/mm/numa.html</a>
+      <br>Hardware and software definitions, cells and nodes, cache-coherent NUMA, memoryless-node
+      hiding on x86, zonelists and fallback, local allocation, scheduler behaviour, affinity interfaces.</li>
+    <li id="s2"><b>Linux Kernel Documentation — NUMA Memory Policy.</b>
+      <a href="https://docs.kernel.org/admin-guide/mm/numa_memory_policy.html" target="_blank" rel="noopener">docs.kernel.org/admin-guide/mm/numa_memory_policy.html</a>
+      <br>Policy as a programming interface versus cpusets, cpuset priority, policy scopes, the
+      MPOL_* modes, policy applying only to later allocations, VMA policy restrictions.</li>
+    <li id="s3"><b>Linux Kernel Documentation — HugeTLB Pages.</b>
+      <a href="https://docs.kernel.org/admin-guide/mm/hugetlbpage.html" target="_blank" rel="noopener">docs.kernel.org/admin-guide/mm/hugetlbpage.html</a>
+      <br>TLB as a scarce resource, page sizes, non-swappable reserved pages, boot-time allocation
+      reliability, per-node <code>hugepages=0:1,1:2</code> format, silent skipping of nodes and
+      cross-node make-up allocation, per-node sysfs attributes, mempolicy interaction, demote.</li>
+    <li id="s4"><b>Linux Kernel Documentation — PCI Express I/O Virtualization Howto.</b>
+      <a href="https://docs.kernel.org/PCI/pci-iov-howto.html" target="_blank" rel="noopener">docs.kernel.org/PCI/pci-iov-howto.html</a>
+      <br>SR-IOV as a PCIe Extended capability, physical and virtual function definitions, per-VF
+      routing ID and memory space, <code>sriov_numvfs</code>, VFs as hot-plugged PCI devices.</li>
+    <li id="s5"><b>AMD — Data Plane Development Kit (DPDK) Tuning Guide for AMD EPYC™ 9004
+      Processors</b>, Publication 58017 (document footers read <i>58017 – 1.3</i>).
+      <a href="https://docs.amd.com/v/u/en-US/58017-amd-epyc-9004-tg-data-plane-dpdk" target="_blank" rel="noopener">docs.amd.com — 58017</a>
+      <br>Chip anatomy, NPS semantics and PCIe device locality, cache-as-NUMA, NPS4 preference,
+      interconnect lane trade-off, enumeration guidance, hugepage counts, IOMMU passthrough, boot and
+      runtime settings, verification commands, and the 100 Gbps packet-rate figures.</li>
+    <li id="s6"><b>DPDK Programmer's Guide — Writing Efficient Code.</b>
+      <a href="https://doc.dpdk.org/guides/prog_guide/writing_efficient_code.html" target="_blank" rel="noopener">doc.dpdk.org — writing_efficient_code</a>
+      <br>Local-memory preference and per-socket pool creation, mempool NUMA awareness, memory-channel
+      distribution, <code>mlockall()</code>, fast-path coding guidance, partial-write DMA cost,
+      per-core variables, batch-size trade-off.</li>
+    <li id="s7"><b>DPDK Getting Started Guide for Linux — best performance with NICs on Intel
+      platforms.</b>
+      <a href="https://doc.dpdk.org/guides/linux_gsg/nic_perf_intel_platform.html" target="_blank" rel="noopener">doc.dpdk.org — nic_perf_intel_platform</a>
+      <br>Populating every memory channel, slot generation requirements, CPU0/CPU1 slot captions,
+      same-socket NIC guidance, the <code>numa_node</code> check, boot settings, VT-d guidance,
+      hugetlbfs mount.</li>
+    <li id="s8"><b>DPDK Getting Started Guide for Linux — best performance on AMD platform.</b>
+      <a href="https://doc.dpdk.org/guides/linux_gsg/amd_platform.html" target="_blank" rel="noopener">doc.dpdk.org — amd_platform</a>
+      <br>Performance influenced by BIOS, NUMA-per-socket configuration, memory-per-NUMA allocation
+      and proximity to I/O devices; PCIe generation guidance; link-status check;
+      <code>pcie_aspm=off</code>.</li>
+    <li id="s9"><b>DPDK Getting Started Guide for Linux — EAL parameters.</b>
+      <a href="https://doc.dpdk.org/guides/linux_gsg/linux_eal_parameters.html" target="_blank" rel="noopener">doc.dpdk.org — linux_eal_parameters</a>
+      <br><code>-l/--lcores</code> syntax and the multiple-lcores-per-CPU warning,
+      <code>--numa-mem</code> and <code>--numa-limit</code>, <code>-n</code>, <code>-a/-b</code>,
+      <code>--iova-mode</code>, VFIO options, hugepage directory and unlink options.</li>
+    <li id="s10"><b>DPDK Programmer's Guide — Memory Pool Library.</b>
+      <a href="https://doc.dpdk.org/guides/prog_guide/mempool_lib.html" target="_blank" rel="noopener">doc.dpdk.org — mempool_lib</a>
+      <br>Object padding across channels and ranks, ranks sharing a data path, the 64-byte access
+      pattern, per-core cache.</li>
+    <li id="s11"><b>Intel — Technical Overview of the Intel® Xeon® Scalable Processor Max Series</b>
+      (ID 766083).
+      <a href="https://www.intel.com/content/www/us/en/developer/articles/technical/xeon-scalable-processor-max-series.html" target="_blank" rel="noopener">intel.com — Xeon Max Series technical overview</a>
+      <br>Die-traversal rationale, UMA, SNC domain composition and latency, cache uniqueness and
+      remote-socket distribution, Hemisphere/Quadrant hash routing and BIOS fallback order, controller
+      and cluster counts, memory channels and speeds, UPI links, PCIe lanes, HBM as separate NUMA
+      nodes, Scalable I/O Virtualization.</li>
+    <li id="s12"><b>DPDK HowTo Guides — Debug &amp; Troubleshoot guide.</b>
+      <a href="https://doc.dpdk.org/guides/howto/debug_troubleshoot.html" target="_blank" rel="noopener">doc.dpdk.org — debug_troubleshoot</a>
+      <br>"The NUMA instance for packets or objects from NIC, mempool, and ring should be the same",
+      per-socket pool depletion, drop isolation sequence, running performance-critical logic on the
+      correct node.</li>
+  </ol>
+
+  <div class="callout">
+    <div class="t">What is deliberately missing</div>
+    <p>You will not find latency figures in nanoseconds here, or a percentage penalty for cross-node
+      placement. Those numbers depend heavily on the exact processor model, memory configuration,
+      firmware version and traffic pattern, and no primary vendor source published a general figure.
+      Measure them on your own hardware rather than trusting a number from a training deck.</p>
+  </div>
+</section>
+
+<footer>
+  <div>NUMA Explained — built entirely from primary vendor and upstream documentation. Every claim
+    is traceable through the numbered source panel. Use the Essentials / Everything switch at the top
+    to change reading depth.</div>
+</footer>
+
+</main>
+
+<script>
+gsap.registerPlugin(ScrollTrigger);
+const NS='http://www.w3.org/2000/svg';
+function el(tag,attrs){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);return e;}
+
+/* ============================ GLOSSARY ============================ */
+const GLOSSARY={
+ dotted:['Dotted underline','A term with a definition attached. Hover or tap it here, or find it in the Glossary section.'],
+ numa:['NUMA','Non-Uniform Memory Access. A server design where memory is split into groups, each attached to a specific set of processor cores. Reaching your own group is fast; reaching another group is slower.'],
+ node:['NUMA node','One group of processor cores plus the memory attached to them. Linux numbers them node 0, node 1, and so on.'],
+ cell:['Cell','The kernel documentation\'s word for one physical assembly of cores, memory and I/O. Linux maps cells onto software "nodes".'],
+ ccnuma:['ccNUMA','Cache-coherent NUMA. Means any core can read any memory in the machine and the hardware keeps everything consistent automatically. This is why remote memory is slow rather than unavailable.'],
+ cpu:['CPU / core','The part that executes instructions. A modern server processor contains many cores. "Socket" means one physical processor chip.'],
+ cache:['Cache','Very fast memory built into the processor that holds recently used data, so the processor does not have to fetch it from main memory every time.'],
+ llc:['Last-level cache (LLC)','The largest and slowest of the processor\'s internal caches, shared between cores. The last stop before going out to main memory.'],
+ cacheline:['Cache line','The smallest chunk of memory the processor moves in and out of cache — typically 64 bytes. Writing part of one costs more than writing all of it.'],
+ dram:['DRAM','Dynamic Random Access Memory — the actual memory chips on your memory sticks. What people mean by "RAM".'],
+ dimm:['DIMM','A memory stick. Dual In-line Memory Module. Each one plugs into a slot on the motherboard.'],
+ channel:['Memory channel','A parallel path between the processor\'s memory controller and the memory sticks. More channels used at once means more data per second. A channel with no stick in it contributes nothing.'],
+ rank:['Rank','A subdivision within a memory stick. Ranks share one data path, so they cannot all be read at the same time — which is why spreading data across ranks matters.'],
+ memctrl:['Memory controller','The part of the processor that talks to the memory sticks. It manages the channels.'],
+ interconnect:['Interconnect / fabric','The high-speed link inside the machine that connects NUMA nodes to each other. Anything remote travels over it, and its capacity is fixed and shared.'],
+ xgmi:['xGMI','AMD\'s processor-to-processor link. Up to 4 of them, up to 32 Gbps each, sharing physical wiring with PCIe lanes.'],
+ gmi:['GMI','AMD\'s link between a group of cores and the central hub inside one processor.'],
+ upi:['UPI','Intel\'s Ultra Path Interconnect — its processor-to-processor link, equivalent in role to AMD\'s xGMI.'],
+ iod:['IOD','I/O Die. The central hub inside an AMD EPYC processor that connects core groups, memory controllers and expansion slots.'],
+ ccd:['CCD','Core Complex Die. One of the separate chiplets containing processor cores in an AMD EPYC processor.'],
+ ccx:['CCX','Core Complex. A group of up to eight cores sharing one cache, inside a CCD.'],
+ umc:['UMC','Unified Memory Controller. AMD\'s name for one memory controller. An EPYC 9004 processor has twelve.'],
+ nps:['NPS','NUMA Nodes Per Socket. AMD\'s BIOS setting that decides how many NUMA nodes one processor presents. Options are 0, 1, 2 and 4.'],
+ snc:['SNC','Sub-NUMA Clustering. Intel\'s equivalent of NPS — splits one processor into 2 or 4 NUMA domains to shorten internal distances.'],
+ uma:['UMA','Uniform Memory Access. The opposite of NUMA — one memory pool shared equally. On modern Intel chips it is a BIOS mode that presents the whole processor as a single node.'],
+ hbm:['HBM','High Bandwidth Memory. Very fast memory built into the processor package on some Intel models. It appears to software as its own NUMA node.'],
+ cxl:['CXL','Compute Express Link. A newer connection standard, built on PCIe, that lets attached devices share memory coherently with the processor.'],
+ bios:['BIOS','The firmware settings menu you reach before the operating system boots. Several NUMA-critical options live here.'],
+ smt:['SMT','Simultaneous Multithreading. Lets one physical core appear as two logical cores. Intel calls its version Hyper-Threading.'],
+ pcie:['PCIe','Peripheral Component Interconnect Express. The connection standard for expansion cards, including network cards. Cards plug into PCIe slots.'],
+ lane:['PCIe lane','One data path in a PCIe connection. A slot described as "x16" has sixteen of them. More lanes means more bandwidth.'],
+ rootcomplex:['Root complex','The part of the processor that PCIe slots connect to. Each root complex belongs to one NUMA node — which is how a card ends up with a node.'],
+ nic:['NIC','Network Interface Card. Your network card.'],
+ sriov:['SR-IOV','Single Root I/O Virtualization. Lets one physical network card present itself as many separate virtual cards, each usable directly by a different virtual machine or application.'],
+ pf:['Physical Function (PF)','The real, physical network card in SR-IOV terms.'],
+ vf:['Virtual Function (VF)','One of the virtual copies SR-IOV creates from a physical card. It behaves like its own card but shares the physical one — including its NUMA node.'],
+ vfio:['VFIO','A Linux framework that lets a userspace application safely control a hardware device directly. DPDK uses it to drive network cards without the kernel in the way.'],
+ iommu:['IOMMU','Input-Output Memory Management Unit. Translates and polices the memory addresses a device is allowed to touch. Intel calls its version VT-d, AMD calls it AMD-Vi.'],
+ iova:['IOVA','I/O Virtual Address. The address a device uses, which the IOMMU translates into a real physical address.'],
+ dma:['DMA','Direct Memory Access. When a device such as a network card writes into or reads from memory itself, without the processor copying the data.'],
+ mmio:['MMIO','Memory-Mapped I/O. Controlling a device by reading and writing what look like memory addresses but are actually the device\'s registers.'],
+ page:['Page','The fixed-size block memory is handed out in. Normally 4 kilobytes.'],
+ hugepage:['Hugepage','A much larger memory page — 2 MB or 1 GB. Fewer, bigger pages means far fewer address lookups, and they cannot be swapped to disk.'],
+ tlb:['TLB','Translation Lookaside Buffer. A small, fast table in the processor that remembers where recently used memory pages actually live. It has limited room, which is why page size matters.'],
+ pagetable:['Page table','The full map of which virtual address corresponds to which physical memory location. Consulting it is slow, which is why the TLB exists.'],
+ cpuset:['cpuset','A Linux mechanism for restricting which cores and which NUMA nodes a group of processes may use.'],
+ dpdk:['DPDK','Data Plane Development Kit. A toolkit for very fast packet processing that bypasses the operating system\'s normal networking and talks to the network card directly.'],
+ eal:['EAL','Environment Abstraction Layer. The part of DPDK that sets up cores, memory and devices at startup. Most DPDK command-line options are EAL options.'],
+ pmd:['Poll Mode Driver (PMD)','A driver that constantly checks the network card for new packets instead of waiting to be interrupted. Faster, but it keeps a core permanently busy.'],
+ mbuf:['mbuf','DPDK\'s packet buffer — the small structure holding one packet plus its metadata.'],
+ mempool:['Mempool','A pre-allocated pool of fixed-size buffers that DPDK hands out and takes back. Created on a specific NUMA node, which is the whole point.'],
+ ring:['Ring','A fixed-size queue DPDK uses to pass packets between the card and software, or between threads.'],
+ lcore:['lcore','DPDK\'s name for a logical core it runs a thread on. You choose which ones with the -l option.'],
+ descriptor:['Descriptor','A small record telling the network card where in memory to put an incoming packet, or where to find an outgoing one.'],
+ kernelbypass:['Kernel bypass','Skipping the operating system\'s networking stack so an application talks to the hardware directly. The core idea behind DPDK.'],
+ linerate:['Line rate','The maximum speed the physical link can carry — for example 100 Gbps on a 100 gigabit card. Reaching it is the goal.'],
+ mpps:['Mpps','Millions of packets per second. The usual unit for packet-processing throughput, because small packets are harder than big ones.'],
+ gts:['GT/s','Gigatransfers per second. How fast a link signals. Not the same as gigabits per second, because some bits carry encoding overhead.'],
+ mts:['MT/s','Megatransfers per second. The equivalent measure for memory speed.'],
+ rss:['RSS','Receive Side Scaling. A network card feature that spreads incoming packets across several queues so multiple cores can work in parallel.'],
+ aspm:['ASPM','Active State Power Management. A PCIe power-saving feature that adds latency, so it is usually disabled for low-latency networking.'],
+ sysfs:['sysfs','The /sys directory in Linux — a set of virtual files exposing hardware information. Reading numa_node from it is how you find a card\'s node.'],
+ numactl:['numactl','A command-line tool for viewing NUMA layout and for running a program bound to specific nodes.'],
+ lstopo:['lstopo','A command that prints the machine\'s full topology — cores, caches and expansion cards, grouped by node.'],
+ latency:['Latency','How long a single operation takes. Lower is better.'],
+ bandwidth:['Bandwidth','How much data moves per second. Higher is better. Separate from latency — you can have plenty of one and little of the other.'],
+ interleave:['Interleaving','Spreading consecutive memory addresses across several channels so they can be accessed in parallel. How wide the spread is depends on your NUMA setting.'],
+ isolcpus:['isolcpus','A Linux boot option that keeps the normal scheduler off specified cores, reserving them for a performance-critical application.']
+};
+
+(function initGlossary(){
+  const list=document.getElementById('glossaryList');
+  const keys=Object.keys(GLOSSARY).filter(k=>k!=='dotted')
+    .sort((a,b)=>GLOSSARY[a][0].localeCompare(GLOSSARY[b][0]));
+  keys.forEach(k=>{
+    const d=document.createElement('div'); d.className='gterm'; d.dataset.k=(GLOSSARY[k][0]+' '+GLOSSARY[k][1]).toLowerCase();
+    d.innerHTML='<b>'+GLOSSARY[k][0]+'</b><span>'+GLOSSARY[k][1]+'</span>';
+    list.appendChild(d);
+  });
+  document.getElementById('glFilter').addEventListener('input',e=>{
+    const q=e.target.value.toLowerCase().trim();
+    list.querySelectorAll('.gterm').forEach(d=>{
+      d.style.display = (!q || d.dataset.k.includes(q)) ? '' : 'none';
+    });
+  });
+  /* integrity check */
+  const missing=[];
+  document.querySelectorAll('.gl').forEach(s=>{ if(!GLOSSARY[s.dataset.t]) missing.push(s.dataset.t); });
+  if(missing.length) console.warn('Glossary terms missing definitions:',[...new Set(missing)]);
+})();
+
+(function glossaryPopover(){
+  const pop=document.getElementById('glpop');
+  let hideT=null;
+  function show(e){
+    const t=e.currentTarget.dataset.t, g=GLOSSARY[t];
+    if(!g) return;
+    clearTimeout(hideT);
+    pop.innerHTML='<b>'+g[0]+'</b>'+g[1];
+    pop.style.display='block';
+    const r=e.currentTarget.getBoundingClientRect();
+    const pw=Math.min(330,window.innerWidth-24);
+    let left=r.left+window.scrollX;
+    if(left+pw>window.innerWidth-12) left=window.innerWidth-pw-12;
+    if(left<12) left=12;
+    pop.style.left=left+'px';
+    pop.style.top=(r.bottom+window.scrollY+8)+'px';
+    gsap.fromTo(pop,{y:-5,opacity:0},{y:0,opacity:1,duration:.2});
+  }
+  function hide(){ hideT=setTimeout(()=>{pop.style.display='none';},120); }
+  document.querySelectorAll('.gl').forEach(s=>{
+    s.setAttribute('tabindex','0');
+    s.addEventListener('mouseenter',show);
+    s.addEventListener('mouseleave',hide);
+    s.addEventListener('focus',show);
+    s.addEventListener('blur',hide);
+    s.addEventListener('click',e=>{e.preventDefault();show(e);});
+  });
+  pop.addEventListener('mouseenter',()=>clearTimeout(hideT));
+  pop.addEventListener('mouseleave',hide);
+})();
+
+/* ============================ MODE SWITCH ============================ */
+const bEss=document.getElementById('btnEss'), bEvery=document.getElementById('btnEvery');
+function setMode(m){
+  document.body.classList.toggle('essentials',m==='ess');
+  document.body.classList.toggle('everything',m==='every');
+  bEss.classList.toggle('on',m==='ess');
+  bEvery.classList.toggle('on',m==='every');
+  document.querySelectorAll('details.deep').forEach(d=>{ d.open = (m==='every'); });
+  ScrollTrigger.refresh();
+}
+bEss.addEventListener('click',()=>setMode('ess'));
+bEvery.addEventListener('click',()=>setMode('every'));
+setMode('ess');
+
+/* ============================ CHROME ============================ */
+const prog=document.getElementById('progress');
+function onScroll(){
+  const h=document.documentElement;
+  prog.style.width=(h.scrollTop/(h.scrollHeight-h.clientHeight)*100)+'%';
+}
+window.addEventListener('scroll',onScroll,{passive:true}); onScroll();
+
+document.querySelectorAll('section[id]').forEach(sec=>{
+  ScrollTrigger.create({trigger:sec,start:'top 55%',end:'bottom 55%',
+    onToggle:self=>{ if(self.isActive){
+      document.querySelectorAll('#navlinks a').forEach(a=>
+        a.classList.toggle('on',a.getAttribute('href')==='#'+sec.id));
+    }}});
+});
+
+document.querySelectorAll('sup.cite a').forEach(a=>{
+  a.addEventListener('click',()=>{
+    const t=document.querySelector(a.getAttribute('href')); if(!t) return;
+    document.querySelectorAll('#sources li').forEach(li=>li.classList.remove('hl'));
+    setTimeout(()=>{t.classList.add('hl');gsap.fromTo(t,{scale:.995},{scale:1,duration:.4});},350);
+  });
+});
+
+gsap.from('#start .eyebrow, #start h1, #start .lede, #start .onemin',{
+  y:26,opacity:0,duration:.7,ease:'power3.out',stagger:.1});
+document.querySelectorAll('section.mod').forEach(sec=>{
+  gsap.from(sec.querySelectorAll(':scope > *'),{
+    scrollTrigger:{trigger:sec,start:'top 80%'},
+    y:22,opacity:0,duration:.55,ease:'power2.out',stagger:.05});
+});
+
+/* ============================ M1 local vs remote ============================ */
+(function(){
+  const t1=gsap.timeline({repeat:-1,defaults:{ease:'power1.inOut'}});
+  t1.to('#dotLocal',{x:156,duration:.6}).to('#dotLocal',{x:0,duration:.6})
+    .to('#dotLocal',{x:156,duration:.6}).to('#dotLocal',{x:0,duration:.6});
+  const t2=gsap.timeline({repeat:-1,defaults:{ease:'power1.inOut'}});
+  t2.to('#dotRemote',{x:-167,duration:.75}).to('#dotRemote',{x:-334,duration:.75})
+    .to('#dotRemote',{x:-167,duration:.75}).to('#dotRemote',{x:0,duration:.75});
+  gsap.to('#lblRemote',{opacity:.4,duration:1.1,repeat:-1,yoyo:true});
+})();
+
+/* ============================ M2 bandwidth ============================ */
+const bwLaneEls=[],BW_N=8;
+(function(){
+  const chans=document.getElementById('bwChans'),lanes=document.getElementById('bwLanes');
+  const t=el('text',{x:40,y:52,fill:'#93a2b9','font-size':11,'letter-spacing':2});
+  t.textContent='MEMORY CHANNELS'; chans.appendChild(t);
+  for(let i=0;i<BW_N;i++){
+    const y=62+i*24;
+    chans.appendChild(el('rect',{x:40,y:y,width:130,height:18,rx:4,fill:'#161f30',stroke:'#2b3a56'}));
+    const lb=el('text',{x:105,y:y+13,fill:'#93a2b9','font-size':9.5,'text-anchor':'middle'});
+    lb.textContent='channel '+i; chans.appendChild(lb);
+    const lane=el('rect',{x:180,y:y+6,width:580,height:6,rx:3,fill:'#4fd1c5',opacity:.85});
+    lanes.appendChild(lane); bwLaneEls.push({lane:lane,y:y+6});
+  }
+})();
+const bwOut=document.getElementById('bwOut'),bwCap=document.getElementById('bwCap');
+function applyBw(mode){
+  const fab=document.getElementById('bwFabric'),fabT=document.getElementById('bwFabricT');
+  if(mode==='local'){
+    bwLaneEls.forEach((l,i)=>gsap.to(l.lane,{attr:{y:l.y,height:6,width:580,x:180},
+      fill:'#4fd1c5',duration:.6,ease:'power2.inOut',delay:i*.02}));
+    gsap.to([fab,fabT],{opacity:0,duration:.3});
+    bwCap.textContent='eight channels working at once — the full width reaches the core';
+    bwCap.setAttribute('fill','#5ddc9a');
+    bwOut.innerHTML='<b>Local.</b> Every channel that has a memory stick in it contributes at the '+
+      'same time. This is the situation the big number on the spec sheet describes. It is also why '+
+      'DPDK tells you to put a memory stick in every channel, calling it one of the most direct '+
+      'effects on performance. [6][7]';
+  } else {
+    const cy=167;
+    bwLaneEls.forEach((l,i)=>gsap.to(l.lane,{attr:{y:cy-12+i*3,height:2.2,width:380,x:180},
+      fill:'#f2637e',duration:.6,ease:'power2.inOut',delay:i*.02}));
+    gsap.to([fab,fabT],{opacity:1,duration:.4,delay:.25});
+    bwCap.textContent='the same eight channels, now queuing through one shared link';
+    bwCap.setAttribute('fill','#f2637e');
+    bwOut.innerHTML='<b>Remote.</b> The memory did not get slower — the route to it got narrower. '+
+      'Your speed is now set by the link between nodes, which is fixed and shared: up to 4 links at '+
+      'up to 32 Gbps on AMD [5], up to 4 links at up to 16 GT/s on Intel [11]. Packets, background '+
+      'housekeeping traffic and memory lookups all queue for the same link, which is why the penalty '+
+      'gets worse as the machine gets busier.';
+  }
+  gsap.fromTo(bwOut,{opacity:.3},{opacity:1,duration:.4});
+}
+document.querySelectorAll('#bwCtrls .btn').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('#bwCtrls .btn').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); applyBw(b.dataset.bw);}));
+applyBw('local');
+
+/* ============================ M4 AMD ============================ */
+const ccdEls=[],umcEls=[],hubEls=[];
+(function(){
+  const ccds=document.getElementById('ccds'),umcs=document.getElementById('umcs'),hubs=document.getElementById('iohubs');
+  const layout=[];
+  for(let i=0;i<6;i++) layout.push({x:190,y:66+i*46,side:'L',idx:i});
+  for(let i=0;i<6;i++) layout.push({x:560,y:66+i*46,side:'R',idx:i});
+  layout.forEach((p,n)=>{
+    const q=(p.side==='L'?(p.idx<3?0:1):(p.idx<3?2:3));
+    const r=el('rect',{x:p.x,y:p.y,width:150,height:38,rx:6,fill:'#161f30',stroke:'#2b3a56'});
+    const t=el('text',{x:p.x+75,y:p.y+18,fill:'#e2e9f4','font-size':10.5,'text-anchor':'middle'});
+    t.textContent='core group '+n;
+    const t2=el('text',{x:p.x+75,y:p.y+30,fill:'#5c6b85','font-size':8.5,'text-anchor':'middle'});
+    t2.textContent='up to 8 cores';
+    ccds.appendChild(r);ccds.appendChild(t);ccds.appendChild(t2);
+    ccdEls.push({rect:r,q:q});
+    const lx1=p.side==='L'?p.x+150:p.x, lx2=p.side==='L'?360:540;
+    ccds.appendChild(el('line',{x1:lx1,y1:p.y+19,x2:lx2,y2:p.y+19,stroke:'#2b3a56','stroke-width':1.2,'stroke-dasharray':'3 3'}));
+  });
+  for(let i=0;i<12;i++){
+    const col=i%2,row=Math.floor(i/2), x=376+col*80,y=118+row*36;
+    const q=(col===0?(row<3?0:1):(row<3?2:3));
+    const r=el('rect',{x:x,y:y,width:70,height:26,rx:4,fill:'#0d121c',stroke:'#2b3a56'});
+    const t=el('text',{x:x+35,y:y+17,fill:'#93a2b9','font-size':9,'text-anchor':'middle'});
+    t.textContent='mem ctrl'; umcs.appendChild(r);umcs.appendChild(t);
+    umcEls.push({rect:r,q:q});
+  }
+  [{x:60,y:66,q:0},{x:60,y:290,q:1},{x:740,y:66,q:2},{x:740,y:290,q:3}].forEach((h,i)=>{
+    const r=el('rect',{x:h.x,y:h.y,width:100,height:44,rx:6,fill:'#0d121c',stroke:'#ff7a45','stroke-dasharray':'4 3'});
+    const t=el('text',{x:h.x+50,y:h.y+20,fill:'#ff7a45','font-size':10,'text-anchor':'middle'});
+    t.textContent='card slots';
+    const t2=el('text',{x:h.x+50,y:h.y+34,fill:'#5c6b85','font-size':8.5,'text-anchor':'middle'});
+    t2.textContent='NICs go here';
+    hubs.appendChild(r);hubs.appendChild(t);hubs.appendChild(t2);
+    hubEls.push({rect:r,text:t,q:h.q});
+  });
+})();
+const QCOL=['#ff7a45','#f7b955','#4fd1c5','#7aa2f7'];
+const npsOut=document.getElementById('npsOut');
+const NPSINFO={
+ '4':['NPS = 4 — four NUMA nodes in this processor',
+   'The chip is split into four quarters. Each quarter has its own cores, its own memory controllers and its own card slots. Trips inside a quarter are short. AMD lists this as preferred for low latency and I/O throughput. <b>Note that a network card now belongs to one specific quarter.</b> [5]'],
+ '2':['NPS = 2 — two NUMA nodes',
+   'Half the cores and half the memory in each node. Each node gets more memory channels than at NPS=4, so more bandwidth each, but the average distance inside a node is longer. A card belongs to whichever half its slot is wired to. [5]'],
+ '1':['NPS = 1 — one NUMA node per processor',
+   'The whole processor is one node. All cores, all memory and all card slots on this processor are in it. Maximum bandwidth for a single node, longest average distances. [5]'],
+ '0':['NPS = 0 — the entire server is one node',
+   'Both processors and all their memory are presented as a single node. The long trips between processors still happen — you have just removed your software\'s ability to see them and avoid them. Memory is interleaved across both processors, so roughly half of any allocation is far away. [5]'],
+ 'L3':['Cache as NUMA — one node per cache',
+   'Each group of cores that shares a cache becomes its own node. A 12-group processor can present up to twelve nodes. Only useful if your software can pin itself very tightly. [5]']
+};
+function applyNPS(mode){
+  const ov=document.getElementById('npsOverlay'); ov.innerHTML='';
+  let groups;
+  if(mode==='4') groups=[[0],[1],[2],[3]];
+  else if(mode==='2') groups=[[0,1],[2,3]];
+  else if(mode==='1'||mode==='0') groups=[[0,1,2,3]];
+  else groups=null;
+  const colorOf=q=>{ if(mode==='L3') return null;
+    for(let i=0;i<groups.length;i++) if(groups[i].includes(q)) return QCOL[mode==='4'?q:i];
+    return '#2b3a56'; };
+  ccdEls.forEach((c,i)=>{
+    const col=mode==='L3'?QCOL[i%4]:colorOf(c.q);
+    gsap.to(c.rect,{attr:{stroke:col},duration:.45,delay:i*.015});});
+  umcEls.forEach((u,i)=>{
+    const col=mode==='L3'?'#2b3a56':colorOf(u.q);
+    gsap.to(u.rect,{attr:{stroke:col},duration:.45,delay:i*.012});});
+  hubEls.forEach(h=>{
+    const col=mode==='L3'?'#2b3a56':colorOf(h.q);
+    gsap.to(h.rect,{attr:{stroke:col},duration:.45});
+    gsap.to(h.text,{attr:{fill:col},duration:.45});});
+  let frames=[];
+  if(mode==='4') frames=[[30,52,410,140,0],[30,236,410,140,1],[460,52,410,140,2],[460,236,410,140,3]];
+  else if(mode==='2') frames=[[30,52,840,140,0],[30,236,840,140,1]];
+  else if(mode==='1'||mode==='0') frames=[[30,52,840,324,0]];
+  if(frames.length){
+    frames.forEach((f,i)=>{
+      const r=el('rect',{x:f[0],y:f[1],width:f[2],height:f[3],rx:10,fill:'none',
+        stroke:QCOL[f[4]],'stroke-dasharray':'6 5','stroke-width':1.5,opacity:0});
+      ov.appendChild(r); gsap.to(r,{opacity:.78,duration:.5,delay:.15+i*.06});});
+    if(mode==='0'){
+      const t=el('text',{x:450,y:44,fill:'#ff7a45','font-size':11,'text-anchor':'middle',opacity:0});
+      t.textContent='… and the second processor is inside this same node too';
+      ov.appendChild(t); gsap.to(t,{opacity:1,duration:.5,delay:.3});}
+  } else {
+    ccdEls.forEach((c,i)=>{
+      const r=el('rect',{x:(i<6?184:554),y:60+(i%6)*46,width:162,height:50,rx:8,fill:'none',
+        stroke:QCOL[i%4],'stroke-dasharray':'4 4',opacity:0});
+      ov.appendChild(r); gsap.to(r,{opacity:.7,duration:.4,delay:i*.03});});
+  }
+  npsOut.innerHTML='<b>'+NPSINFO[mode][0]+'</b><br>'+NPSINFO[mode][1];
+  gsap.fromTo(npsOut,{opacity:.3},{opacity:1,duration:.4});
+}
+document.querySelectorAll('#npsCtrls .btn').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('#npsCtrls .btn').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); applyNPS(b.dataset.nps);}));
+applyNPS('4');
+
+/* ============================ M4 Intel ============================ */
+const tileEls=[],mcEls=[];
+(function(){
+  const tiles=document.getElementById('intelTiles'),mcs=document.getElementById('intelMCs');
+  for(let r=0;r<4;r++) for(let c=0;c<8;c++){
+    const x=110+c*86,y=70+r*66;
+    const rect=el('rect',{x:x,y:y,width:74,height:54,rx:6,fill:'#161f30',stroke:'#2b3a56'});
+    const t=el('text',{x:x+37,y:y+26,fill:'#93a2b9','font-size':9.5,'text-anchor':'middle'});
+    t.textContent='core';
+    const t2=el('text',{x:x+37,y:y+40,fill:'#5c6b85','font-size':8.5,'text-anchor':'middle'});
+    t2.textContent='+ cache';
+    tiles.appendChild(rect);tiles.appendChild(t);tiles.appendChild(t2);
+    tileEls.push({rect:rect,q:(c<4?0:2)+(r<2?0:1),half:(c<4?0:1)});
+  }
+  [{x:30,y:96,q:0},{x:30,y:228,q:1},{x:800,y:96,q:2},{x:800,y:228,q:3}].forEach((m,i)=>{
+    const r=el('rect',{x:m.x,y:m.y,width:72,height:56,rx:6,fill:'#0d121c',stroke:'#4b9fea'});
+    const t=el('text',{x:m.x+36,y:m.y+26,fill:'#4b9fea','font-size':9.5,'text-anchor':'middle'});
+    t.textContent='mem ctrl';
+    const t2=el('text',{x:m.x+36,y:m.y+41,fill:'#5c6b85','font-size':8.5,'text-anchor':'middle'});
+    t2.textContent='+ channels';
+    mcs.appendChild(r);mcs.appendChild(t);mcs.appendChild(t2);
+    mcEls.push({rect:r,text:t,q:m.q});});
+})();
+const ICOL=['#4b9fea','#7aa2f7','#4fd1c5','#5ddc9a'];
+const intelOut=document.getElementById('intelOut');
+const IMODE={
+ UMA:['One node (UMA) — no NUMA split at all',
+   'The whole processor is one pool, spread evenly across all memory controllers. Simple, but a core may be served by a controller on the far side of the chip, and there is no way to ask for anything better. [11]'],
+ HEMI:['Hemisphere — two zones, handled automatically',
+   'The chip is split in two. Your software does not need to know or change anything: the hardware quietly routes each request to the nearer memory controller in its own half. Better than UMA, not as good as SNC. [11]'],
+ QUAD:['Quadrant — four zones, handled automatically (the default)',
+   'Same idea as Hemisphere but in four zones. This is the BIOS default. <b>Watch out:</b> if memory sticks are not populated symmetrically, the system quietly drops back to Hemisphere, and then to UMA. [11]'],
+ SNC2:['SNC-2 — two real NUMA nodes',
+   'Now the split is visible to the operating system as two NUMA nodes. Each holds half the cores, half the cache and one memory controller with its channels. Cores see lower latency for memory in their own half. Your software has to be NUMA-aware to benefit. [11]'],
+ SNC4:['SNC-4 — four real NUMA nodes',
+   'Four visible NUMA nodes. Needs three things to be true: enabled in BIOS, memory populated symmetrically, and NUMA-aware software. Meet all three and Intel states this is the best-performing mode of all. [11]']
+};
+function applyIntel(mode){
+  const ov=document.getElementById('intelOverlay'); ov.innerHTML='';
+  let colorFor;
+  if(mode==='UMA') colorFor=()=>'#2b3a56';
+  else if(mode==='HEMI'||mode==='SNC2') colorFor=t=>ICOL[t.half*2];
+  else colorFor=t=>ICOL[t.q];
+  tileEls.forEach((t,i)=>gsap.to(t.rect,{attr:{stroke:colorFor(t)},duration:.45,delay:i*.006}));
+  mcEls.forEach(m=>{
+    let col;
+    if(mode==='UMA') col='#4b9fea';
+    else if(mode==='HEMI'||mode==='SNC2') col=ICOL[m.q<2?0:2];
+    else col=ICOL[m.q];
+    gsap.to(m.rect,{attr:{stroke:col},duration:.45});
+    gsap.to(m.text,{attr:{fill:col},duration:.45});});
+  const solid=(mode==='SNC2'||mode==='SNC4');
+  let frames;
+  if(mode==='UMA') frames=[[20,56,860,300,ICOL[0]]];
+  else if(mode==='HEMI'||mode==='SNC2') frames=[[20,56,432,300,ICOL[0]],[452,56,428,300,ICOL[2]]];
+  else frames=[[20,56,432,152,ICOL[0]],[20,208,432,148,ICOL[1]],[452,56,428,152,ICOL[2]],[452,208,428,148,ICOL[3]]];
+  frames.forEach((f,i)=>{
+    const r=el('rect',{x:f[0],y:f[1],width:f[2],height:f[3],rx:10,fill:'none',stroke:f[4],
+      'stroke-width':solid?1.8:1.3,'stroke-dasharray':solid?'':'6 5',opacity:0});
+    ov.appendChild(r); gsap.to(r,{opacity:solid?.9:.6,duration:.5,delay:.12+i*.06});});
+  intelOut.innerHTML='<b>'+IMODE[mode][0]+'</b><br>'+IMODE[mode][1];
+  gsap.fromTo(intelOut,{opacity:.3},{opacity:1,duration:.4});
+}
+document.querySelectorAll('#intelCtrls .btn').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('#intelCtrls .btn').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); applyIntel(b.dataset.mode);}));
+applyIntel('UMA');
+
+/* ============================ M7 hugepages ============================ */
+(function(){
+  const g=document.getElementById('hugeRows');
+  [{label:'4 KB pages (normal)',n:64,col:'#f2637e',note:'lots of entries, tiny reach'},
+   {label:'2 MB hugepages',n:12,col:'#f7b955',note:'512× more memory per entry'},
+   {label:'1 GB hugepages',n:3,col:'#5ddc9a',note:'262,144× more memory per entry'}
+  ].forEach((r,i)=>{
+    const y=64+i*58;
+    const lt=el('text',{x:30,y:y+18,fill:'#e2e9f4','font-size':12}); lt.textContent=r.label; g.appendChild(lt);
+    const nt=el('text',{x:700,y:y+18,fill:'#5c6b85','font-size':10.5}); nt.textContent=r.note; g.appendChild(nt);
+    const total=490,gap=2,w=(total-(r.n-1)*gap)/r.n;
+    for(let k=0;k<r.n;k++){
+      const rect=el('rect',{x:195+k*(w+gap),y:y,width:w,height:24,rx:2,fill:r.col,opacity:0});
+      g.appendChild(rect);
+      gsap.to(rect,{opacity:.85,duration:.35,delay:.3+i*.35+k*(0.5/r.n),
+        scrollTrigger:{trigger:'#svgHuge',start:'top 82%'}});
+    }
+  });
+})();
+
+/* ============================ M9 packet path ============================ */
+const pathOut=document.getElementById('pathOut');
+let rboxes=[];
+(function(){
+  const bg=document.getElementById('pathBg');
+  bg.appendChild(el('rect',{x:20,y:40,width:400,height:250,rx:10,fill:'#0d121c',stroke:'#22304a'}));
+  let t=el('text',{x:40,y:66,fill:'#93a2b9','font-size':11,'letter-spacing':2}); t.textContent='NODE 0'; bg.appendChild(t);
+  bg.appendChild(el('rect',{x:480,y:40,width:400,height:250,rx:10,fill:'#0d121c',stroke:'#22304a'}));
+  t=el('text',{x:500,y:66,fill:'#93a2b9','font-size':11,'letter-spacing':2}); t.textContent='NODE 1'; bg.appendChild(t);
+  bg.appendChild(el('rect',{x:420,y:130,width:60,height:70,rx:6,fill:'#0d121c',stroke:'#4fd1c5','stroke-dasharray':'4 3'}));
+  t=el('text',{x:450,y:170,fill:'#4fd1c5','font-size':9,'text-anchor':'middle'}); t.textContent='LINK'; bg.appendChild(t);
+  [{x:44,y:88,w:150,h:52,l:'network card',s:'in a slot on node 0'},
+   {x:44,y:170,w:150,h:52,l:'memory pool',s:'where packets go'},
+   {x:230,y:88,w:170,h:52,l:'core',s:'reads the packet'},
+   {x:230,y:170,w:170,h:52,l:'queue',s:'card ↔ software'}].forEach(b=>{
+    bg.appendChild(el('rect',{x:b.x,y:b.y,width:b.w,height:b.h,rx:7,fill:'#161f30',stroke:'#2b3a56'}));
+    const t1=el('text',{x:b.x+b.w/2,y:b.y+24,fill:'#e2e9f4','font-size':12,'text-anchor':'middle'});
+    t1.textContent=b.l; bg.appendChild(t1);
+    const t2=el('text',{x:b.x+b.w/2,y:b.y+40,fill:'#5c6b85','font-size':9.5,'text-anchor':'middle'});
+    t2.textContent=b.s; bg.appendChild(t2);});
+  rboxes=[{x:610,y:88,w:170,h:52,l:'core',s:'reads the packet'},
+          {x:610,y:170,w:170,h:52,l:'memory pool',s:'where packets go'}];
+  rboxes.forEach(b=>{
+    const r=el('rect',{x:b.x,y:b.y,width:b.w,height:b.h,rx:7,fill:'#161f30',stroke:'#2b3a56',opacity:.25});
+    const t1=el('text',{x:b.x+b.w/2,y:b.y+24,fill:'#e2e9f4','font-size':12,'text-anchor':'middle',opacity:.25});
+    t1.textContent=b.l;
+    const t2=el('text',{x:b.x+b.w/2,y:b.y+40,fill:'#5c6b85','font-size':9.5,'text-anchor':'middle',opacity:.25});
+    t2.textContent=b.s;
+    bg.appendChild(r);bg.appendChild(t1);bg.appendChild(t2); b.els=[r,t1,t2];});
+  const dots=document.getElementById('pathDots');
+  dots.appendChild(el('circle',{id:'pkt',cx:119,cy:114,r:8,fill:'#5ddc9a'}));
+  const cap=el('text',{id:'pathCap',x:450,y:318,fill:'#93a2b9','font-size':11.5,'text-anchor':'middle'});
+  dots.appendChild(cap);
+})();
+let pathMode='aligned',pathTl=null;
+function runPath(){
+  if(pathTl) pathTl.kill();
+  const pkt='#pkt',cap=document.getElementById('pathCap');
+  gsap.set(pkt,{attr:{cx:119,cy:114},fill:'#5ddc9a'});
+  let steps;
+  if(pathMode==='aligned'){
+    steps=[['the card checks the queue — same node, short trip',315,196,'#5ddc9a'],
+           ['the card writes the packet into memory — same node',119,196,'#5ddc9a'],
+           ['the core reads the packet — same node',315,114,'#5ddc9a'],
+           ['the memory goes back to the pool — same node',119,196,'#5ddc9a']];
+    pathOut.innerHTML='<b>Everything on one node.</b> The card, the queue, the memory and the core '+
+      'are all in node 0. Nothing crosses the link. This is the arrangement AMD and DPDK both '+
+      'prescribe: cores, memory and I/O devices in the same NUMA node. [5][7][12]';
+  } else {
+    steps=[['the card checks the queue — still fine, same node',315,196,'#5ddc9a'],
+           ['✗ crossing 1 — writing the packet into node 1 memory',695,196,'#f2637e'],
+           ['✗ crossing 2 — the node 1 core reads it back',695,114,'#f2637e'],
+           ['✗ crossing 3 — telling the node 0 card we are done',315,114,'#f7b955'],
+           ['✗ crossing 4 — returning the memory to the node 1 pool',695,196,'#f2637e']];
+    pathOut.innerHTML='<b>Card and work on different nodes.</b> The card is on node 0; the core and '+
+      'the memory are on node 1. One mistake produced <b>four</b> crossings of the link, for every '+
+      'single packet. This is exactly what DPDK\'s rule prevents: the NUMA instance for packets or '+
+      'objects from card, memory pool and queue should be the same. [12]';
+  }
+  pathTl=gsap.timeline({repeat:-1,repeatDelay:.9});
+  steps.forEach(s=>{
+    pathTl.call(()=>{cap.textContent=s[0];cap.setAttribute('fill',s[3]);})
+          .to(pkt,{attr:{cx:s[1],cy:s[2]},fill:s[3],duration:.85,ease:'power1.inOut'});});
+  rboxes.forEach(b=>b.els.forEach(e=>
+    gsap.to(e,{opacity:pathMode==='aligned'?.25:1,duration:.4})));
+  gsap.fromTo(pathOut,{opacity:.3},{opacity:1,duration:.4});
+}
+document.getElementById('btnAligned').addEventListener('click',function(){
+  pathMode='aligned'; this.classList.add('on');
+  document.getElementById('btnSplit').classList.remove('on'); runPath();});
+document.getElementById('btnSplit').addEventListener('click',function(){
+  pathMode='split'; this.classList.add('on');
+  document.getElementById('btnAligned').classList.remove('on'); runPath();});
+document.getElementById('btnReplay').addEventListener('click',runPath);
+runPath();
+
+/* ============================ QUIZZES ============================ */
+const QUIZ={
+ q1:[
+  {q:'What does the "non-uniform" in Non-Uniform Memory Access refer to?',
+   o:['Different memory sticks run at different speeds',
+      'How long a memory access takes depends on where the memory is relative to the core using it',
+      'Memory is allocated in blocks of different sizes',
+      'Some memory is faulty and gets skipped'],
+   a:1,
+   e:'A server\'s memory is split into groups, each attached to a set of cores. Reaching your own group is fast; reaching another group means crossing a link and takes longer. The access time is not uniform — hence the name. [1]'},
+  {q:'A program on node 1 reads data that is stored in node 0\'s memory. What happens?',
+   o:['The read fails with an error',
+      'The read works, but takes longer and uses up shared link capacity',
+      'The data is automatically copied to node 1 first',
+      'The program is moved to node 0'],
+   a:1,
+   e:'This is the single most important thing to understand about NUMA. Remote memory is slower, not unavailable — the hardware keeps everything consistent automatically. Because nothing fails, nothing warns you, which is why the problem hides so well. [1]'},
+  {q:'Why did chip designers split memory into groups instead of keeping one shared pool?',
+   o:['To reduce the cost of memory',
+      'To allow many cores to fetch memory at the same time instead of queuing for one path',
+      'To make memory easier to replace',
+      'To support larger memory sticks'],
+   a:1,
+   e:'One shared pool becomes a traffic jam as core counts rise. Splitting memory into groups with their own paths lets many cores work in parallel. The kernel documentation describes NUMA as "a means to provide scalable memory bandwidth". [1]'},
+  {q:'ADVANCED — On x86, can you assume every core Linux assigns to a node sees the same memory speed?',
+   o:['Yes, that is the definition of a node',
+      'No — Linux may hide a node that has no memory and reassign its cores elsewhere',
+      'Yes, provided NUMA balancing is turned on',
+      'No, but only on servers with more than four processors'],
+   a:1, deep:true,
+   e:'On x86, Linux hides a node that has no memory attached and reassigns its cores to a node that does. The documentation warns explicitly that you therefore cannot assume all cores of a node see the same local access times and bandwidth. [1]'}
+ ],
+ q2:[
+  {q:'What is the difference between latency and bandwidth?',
+   o:['They are two words for the same thing',
+      'Latency is how long one request takes; bandwidth is how much data moves per second',
+      'Latency applies to memory, bandwidth applies to networks',
+      'Bandwidth is measured in seconds, latency in bytes'],
+   a:1,
+   e:'They are separate. Latency is the time for a single trip. Bandwidth is total throughput. NUMA hurts both, but for different reasons — longer trips hurt latency, and the shared link between nodes limits bandwidth.'},
+  {q:'A server has eight memory channels but memory sticks in only four. What is the effect?',
+   o:['None — the memory controller compensates automatically',
+      'Only total capacity is reduced; speed is unaffected',
+      'Roughly half the parallel bandwidth is thrown away before any software runs',
+      'The server will refuse to boot'],
+   a:2,
+   e:'Channels work in parallel, so an empty channel simply contributes nothing. The DPDK documentation instructs you to put at least one memory stick in every channel and calls this one of the most direct effects on performance. [6][7]'},
+  {q:'Why can a two-processor server run a program SLOWER than a one-processor server?',
+   o:['Two processors always share one memory controller',
+      'The program still only gets one node\'s channels, but now some of its memory is far away',
+      'The second processor runs at a lower clock speed',
+      'Cache is disabled on multi-processor systems'],
+   a:1,
+   e:'Adding a processor doubles the machine\'s total bandwidth, not any single program\'s. A program on one node only ever reaches that node\'s channels. If it also starts reaching across to the other node, you have added long trips without adding speed. [1]'},
+  {q:'ADVANCED — Why does DPDK\'s memory pool pad objects to sit on different channels AND ranks?',
+   o:['Ranks provide extra parallel paths that double bandwidth',
+      'Ranks share one data path, so they cannot be accessed at the same time',
+      'Ranks determine the hugepage size',
+      'It is only needed on error-correcting memory'],
+   a:1, deep:true,
+   e:'"The ranks cannot be accessed simultaneously since they share the same data path." Spreading object start addresses across both channels and ranks is what keeps every channel equally loaded. Effective bandwidth depends on your access pattern, not just your hardware. [6][10]'}
+ ],
+ q3:[
+  {q:'Which command tells you how many NUMA nodes a machine has and how far apart they are?',
+   o:['free -h','numactl --hardware','df -h','uname -a'],
+   a:1,
+   e:'numactl --hardware prints the node count, which cores belong to each node, and a distance matrix showing relative cost between nodes. It is usually the first command to run on an unfamiliar machine.'},
+  {q:'Why do performance-critical applications pin their threads to specific cores?',
+   o:['To reduce electricity consumption',
+      'Because if a thread is moved to another node, its memory does not move with it',
+      'Because Linux cannot schedule more than 64 threads',
+      'To make debugging easier'],
+   a:1,
+   e:'Linux allocates memory near the core a program is running on. But the scheduler does not track a task\'s NUMA footprint, so under load it can move threads to another node. The memory stays behind, and every access becomes remote from that point on. Pinning prevents it. [1]'},
+  {q:'ADVANCED — What is a "zonelist" in the Linux memory manager?',
+   o:['The list of hugepage pools per node',
+      'An ordered list of zones and nodes to try when the chosen one cannot satisfy an allocation',
+      'The mapping of devices to IOMMU domains',
+      'The set of cores allowed by a cpuset'],
+   a:1, deep:true,
+   e:'Linux builds an ordered zonelist per memory zone defining the fallback order on overflow. The default is node-ordered: try other zones on the same node first, then remote nodes ordered by NUMA distance. [1]'}
+ ],
+ q4:[
+  {q:'How many NUMA nodes does a processor have?',
+   o:['It is fixed by the physical chip design',
+      'It depends on a BIOS setting and can usually be changed',
+      'It always matches the number of memory sticks',
+      'It is set by the operating system at boot'],
+   a:1,
+   e:'This surprises most people. AMD calls the setting NPS, Intel calls it Sub-NUMA Clustering. The same physical chip can present one node, two, four or more. [5][11]'},
+  {q:'What is the trade-off when you increase the number of NUMA nodes?',
+   o:['More nodes always means better performance',
+      'Shorter distances inside each node, but fewer memory channels per node',
+      'More nodes uses more electricity',
+      'More nodes reduces the total amount of usable memory'],
+   a:1,
+   e:'Splitting the chip into more nodes shortens internal trips, which cuts latency. But each node now has fewer memory channels to itself, so each node has less bandwidth. It is a genuine trade, not a free win. [5][11]'},
+  {q:'Someone sets the BIOS to present the whole server as one NUMA node, and the NUMA warnings stop. What actually happened?',
+   o:['The problem is solved — there is now genuinely only one node',
+      'The reporting was removed, not the distance; the long trips still happen but are now invisible',
+      'The second processor was disabled',
+      'Memory speed was increased to compensate'],
+   a:1,
+   e:'The links and the distances are physical. Presenting one node hides them from software rather than removing them. On AMD\'s NPS=0 the memory of both processors is interleaved into one address space, so roughly half of any allocation sits on the far side of the machine with no way for software to detect it. [5]'},
+  {q:'Besides memory, what else does the NUMA node setting change?',
+   o:['The clock speed of the cores',
+      'Which node each expansion card — including your network card — belongs to',
+      'The amount of cache available',
+      'Nothing else'],
+   a:1,
+   e:'This is the reason the setting matters so much for networking. On AMD, PCIe devices become local to whichever domain holds their root complex, and that mapping changes with NPS. After any BIOS change you must re-check which node your card reports. [5]'},
+  {q:'ADVANCED — A server is set to Quadrant mode but memory was not populated symmetrically. What happens?',
+   o:['The server refuses to boot',
+      'Quadrant is used anyway with a warning logged',
+      'It silently falls back to Hemisphere, then to UMA if that also cannot be met',
+      'It switches to SNC-2 instead'],
+   a:2, deep:true,
+   e:'Intel documents this fallback chain explicitly — the mode used is dictated by memory symmetry. This is a common silent regression after someone adds or removes memory sticks. [11]'}
+ ],
+ q5:[
+  {q:'Why does a network card belong to a particular NUMA node?',
+   o:['The driver assigns it at startup',
+      'Because the physical slot it sits in is wired to one specific processor',
+      'Because the card firmware chooses one',
+      'It does not — cards are shared equally'],
+   a:1,
+   e:'Slots are physically wired to a processor. That wiring cannot be changed in software, only by moving the card to a different slot. This is why the card\'s node is the fixed point you plan around.'},
+  {q:'Which file tells you which node a network card is on?',
+   o:['/proc/cpuinfo',
+      '/sys/bus/pci/devices/<address>/numa_node',
+      '/etc/numa.conf',
+      '/var/log/dmesg'],
+   a:1,
+   e:'Reading that file prints the node number. Both the Intel and AMD DPDK guides direct you to it. Almost every other decision in this training follows from that one number. [5][7]'},
+  {q:'You are using two network cards for one application. What does DPDK advise?',
+   o:['Put them on different processors to spread the load',
+      'Ensure both cards are on the same processor',
+      'It makes no difference',
+      'Use only one card per server'],
+   a:1,
+   e:'"If you are using 2 or more ports from different NICs, it is best to ensure that these NICs are on the same CPU socket." Splitting them means your application must straddle two nodes no matter how it is arranged. [7]'}
+ ],
+ q6:[
+  {q:'What does SR-IOV do?',
+   o:['Increases the physical speed of a network card',
+      'Lets one physical card present itself as many separate virtual cards',
+      'Encrypts network traffic in hardware',
+      'Combines several cards into one faster link'],
+   a:1,
+   e:'SR-IOV creates virtual copies of a physical card, each usable directly by a different virtual machine, container or application at near-native speed. The real card is the Physical Function; the copies are Virtual Functions. [4]'},
+  {q:'You create 32 virtual functions and give half to workers on node 0 and half to workers on node 1. What is the NUMA result?',
+   o:['The load is now nicely balanced across both nodes',
+      'All 32 stay on the physical card\'s node, so the node-1 workers all make long trips',
+      'Linux automatically moves half the virtual functions to node 1',
+      'Virtual functions have no NUMA node'],
+   a:1,
+   e:'A virtual function is not real hardware. It is still the one physical card, in the one slot, on the one node. Spreading consumers across nodes does not distribute anything — it multiplies the number of long trips. [4]'},
+  {q:'When using SR-IOV, which device should you check numa_node on?',
+   o:['Each virtual function individually',
+      'The physical card',
+      'The processor',
+      'The switch it is connected to'],
+   a:1,
+   e:'The physical card determines the node for everything derived from it. Check the physical function and place the consumers of its virtual functions on that node.'}
+ ],
+ q7:[
+  {q:'What is a hugepage?',
+   o:['A memory stick with unusually high capacity',
+      'A much larger memory block than the normal 4 KB — typically 2 MB or 1 GB',
+      'A compressed region of memory',
+      'A page of memory reserved for the kernel'],
+   a:1,
+   e:'Memory is normally handed out in 4 KB pages. Hugepages are the same memory in far bigger blocks, which means the processor needs far fewer address lookups to cover the same amount of memory. [3]'},
+  {q:'You boot with hugepages=24 on a four-node server and Linux reports 24 allocated. Are they evenly spread?',
+   o:['Yes — the kernel guarantees an even split',
+      'Not necessarily — nodes without enough contiguous free memory are silently skipped, and the shortfall is made up elsewhere',
+      'Yes, unless NUMA balancing is disabled',
+      'No — they always all land on node 0'],
+   a:1,
+   e:'This is the trap in this module. The documentation states that nodes with insufficient contiguous memory "will be silently skipped", and that the kernel "will attempt to make up the difference by allocating extra pages on other nodes". Always verify with the per-node meminfo files. [3]'},
+  {q:'Besides needing fewer address lookups, what makes hugepages valuable for packet processing?',
+   o:['They are stored in the processor cache',
+      'They cannot be swapped out to disk, so there are no surprise pauses',
+      'They are automatically duplicated on every node',
+      'They bypass the memory controller'],
+   a:1,
+   e:'Hugepages are reserved by the kernel, cannot be used for anything else, and cannot be swapped out under memory pressure. That removes a whole class of unpredictable stall from the packet path. [3]'},
+  {q:'ADVANCED — What is the difference between writing to nr_hugepages and nr_hugepages_mempolicy?',
+   o:['They are the same file under different names',
+      'nr_hugepages ignores memory policy; nr_hugepages_mempolicy honours the writing task\'s policy',
+      'nr_hugepages_mempolicy only works for 1 GB pages',
+      'nr_hugepages is read-only'],
+   a:1, deep:true,
+   e:'The documentation is explicit: when nr_hugepages is used, mempolicy is ignored. nr_hugepages_mempolicy allocates from the nodes selected by the writing task\'s policy, which is why the recommended idiom uses numactl. [3]'}
+ ],
+ q8:[
+  {q:'What is DPDK, in one sentence?',
+   o:['A network monitoring dashboard',
+      'A toolkit for fast packet processing that bypasses the operating system\'s networking and talks to the card directly',
+      'A replacement for the Linux kernel',
+      'A hardware accelerator card'],
+   a:1,
+   e:'DPDK gives an application direct access to the network card, skipping the operating system\'s normal networking path. It also constantly polls for packets rather than waiting to be interrupted, which is where much of its speed comes from.'},
+  {q:'DPDK\'s troubleshooting guide states one NUMA rule. What is it?',
+   o:['All cores must be on node 0',
+      'The card, the memory pool and the queue must all be on the same NUMA node',
+      'Memory pools should be created before rings',
+      'Every node must have equal memory'],
+   a:1,
+   e:'"The NUMA instance for packets or objects from NIC, mempool, and ring should be the same." The accompanying figure is captioned "Memory objects have to be close to the device per NUMA." Add the polling core and that is the whole discipline. [12]'},
+  {q:'What does the option --numa-mem 4096,0 do?',
+   o:['Limits total memory use to 4 GB',
+      'Reserves 4 GB of memory on node 0 and none on node 1',
+      'Sets 4096 memory channels',
+      'Reserves memory only for secondary processes'],
+   a:1,
+   e:'--numa-mem takes a comma-separated amount per NUMA node. This example puts all the memory on node 0 — which is what you want if your network card is on node 0. [9]'},
+  {q:'ADVANCED — Why does DPDK warn against binding several of its threads to one physical core?',
+   o:['It breaks address translation',
+      'It can cause poor performance or deadlock when using rings, memory pools or spinlocks',
+      'The toolkit will refuse to start',
+      'It violates the isolcpus setting'],
+   a:1, deep:true,
+   e:'The EAL documentation states this directly and adds that "such a configuration should only be used with care." Related trap: some core-mapping syntax lets threads float between CPUs, which is how carefully-placed memory becomes remote at runtime. [9]'}
+ ],
+ q9:[
+  {q:'In the misaligned example, how many times does a single packet cross between nodes?',
+   o:['Once','Twice','Four times','It never crosses'],
+   a:2,
+   e:'Four: writing the packet into memory, the core reading it back, notifying the card, and returning the memory to the pool. One placement mistake produces four crossings per packet — at millions of packets per second.'},
+  {q:'Why does poor NUMA placement show up as inconsistent performance rather than just a lower average?',
+   o:['The card randomly drops packets',
+      'The link has fixed shared capacity, so queuing on it grows faster than the traffic does',
+      'The operating system throttles remote access on purpose',
+      'Memory speed varies with temperature'],
+   a:1,
+   e:'As cross-node traffic rises, contention on that fixed link grows faster than the traffic itself. Your worst packets get much worse, faster than your average packet does — and for a network application that inconsistency usually matters more than the average.'}
+ ],
+ q10:[
+  {q:'Which single piece of information should you establish first when planning placement?',
+   o:['The total amount of memory installed',
+      'Which NUMA node the network card is on',
+      'The processor clock speed',
+      'The operating system version'],
+   a:1,
+   e:'The card\'s node is fixed by its slot. Cores and memory can be moved to match it. Both the Intel and AMD guides direct you to check this first, and everything else follows from it. [5][7]'},
+  {q:'After changing the NUMA setting in the BIOS, what must you re-check?',
+   o:['Nothing — it only affects memory',
+      'The card\'s node, the core numbering, and the per-node hugepage counts',
+      'Only the hugepage count',
+      'Only the PCIe link speed'],
+   a:1,
+   e:'That setting changes how many nodes exist, which cores belong to which node, how memory interleaves, and which node each expansion card reports. Every assumption downstream has to be derived again. [5]'},
+  {q:'What is the single habit that prevents most of the problems in this training?',
+   o:['Buying faster memory',
+      'Find the card\'s node, put cores and memory on that same node, and verify rather than assume',
+      'Disabling NUMA in the BIOS',
+      'Using more virtual functions'],
+   a:1,
+   e:'Almost everything here reduces to that. AMD states it as a rule: place cores, memory and I/O devices in the same NUMA node — and verify with the per-node files rather than trusting a global number. [5]'}
+ ]
+};
+
+Object.entries(QUIZ).forEach(([key,items])=>{
+  const host=document.querySelector('[data-quiz="'+key+'"]');
+  if(!host) return;
+  host.innerHTML='<div class="qh">Check your understanding</div>';
+  items.forEach((it,qi)=>{
+    const qd=document.createElement('div');
+    qd.className='q'+(it.deep?' deepq':'');
+    const qt=document.createElement('div'); qt.className='qt';
+    const label=it.q.replace(/^ADVANCED — /,'');
+    qt.textContent=(qi+1)+'. '+label;
+    if(it.deep){const s=document.createElement('span');s.className='lvl';s.textContent='Advanced';qt.appendChild(s);}
+    qd.appendChild(qt);
+    const ex=document.createElement('div'); ex.className='expl'; ex.innerHTML=it.e;
+    it.o.forEach((opt,oi)=>{
+      const b=document.createElement('button'); b.className='opt'; b.type='button';
+      b.textContent=String.fromCharCode(65+oi)+'.  '+opt;
+      b.addEventListener('click',()=>{
+        if(qd.dataset.done) return;
+        qd.dataset.done='1';
+        qd.querySelectorAll('.opt').forEach((x,xi)=>{
+          if(xi===it.a) x.classList.add('right');
+          else if(xi===oi) x.classList.add('wrong');
+          else x.classList.add('dim');});
+        ex.classList.add('show');
+        gsap.fromTo(ex,{y:-6,opacity:0},{y:0,opacity:1,duration:.35});});
+      qd.appendChild(b);});
+    qd.appendChild(ex);
+    host.appendChild(qd);});
+});
+
+ScrollTrigger.refresh();
+</script>
+</body>
+</html>
