@@ -1,13 +1,165 @@
-<html>
-
+<!DOCTYPE html>
+<html lang="en">
 <head>
-    <title>Bank CRM</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Placeholder — Training Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:      #080c14;
+  --grid:    rgba(0,200,255,.04);
+  --panel:   rgba(5,20,40,.85);
+  --border:  rgba(0,200,255,.18);
+  --accent:  #00c8ff;
+  --accent2: #ff6b35;
+  --accent3: #7fff6e;
+  --accent4: #c97bff;
+  --text:    #c8e8ff;
+  --muted:   #5a7a9a;
+  --glow:    0 0 20px rgba(0,200,255,.35);
+}
 
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+body {
+  background: var(--bg);
+  font-family: 'Exo 2', sans-serif;
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.page {
+  position: relative; z-index: 1;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 40px 28px 90px;
+}
+
+/* ── Back nav ── */
+.back-nav {
+  margin-bottom: 24px;
+  text-align: left;
+}
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: .72rem;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-decoration: none;
+  padding: 6px 14px;
+  border: 1px solid rgba(0,200,255,.12);
+  border-radius: 20px;
+  background: rgba(0,200,255,.04);
+  transition: color .2s, border-color .2s, background .2s;
+}
+.back-link:hover { color: var(--accent); border-color: rgba(0,200,255,.35); background: rgba(0,200,255,.08); }
+
+/* ── Header ── */
+header {
+  text-align: center;
+  margin-bottom: 36px;
+  animation: fadeDown .7s ease both;
+}
+
+.eyebrow {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: .72rem;
+  letter-spacing: .28em;
+  color: var(--accent4);
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+
+header h1 {
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+  font-weight: 800;
+  letter-spacing: -.02em;
+  background: linear-gradient(135deg, var(--accent4) 0%, #fff 52%, var(--accent) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1.15;
+  margin-bottom: 14px;
+}
+
+header p {
+  color: var(--muted);
+  font-size: .95rem;
+  line-height: 1.7;
+}
+
+/* ── Panel ── */
+.panel {
+  background: var(--panel);
+  border: 1px dashed var(--accent4);
+  border-radius: 16px;
+  padding: 30px;
+  text-align: center;
+  animation: fadeUp .6s .15s ease both;
+}
+
+.panel .tag {
+  display: inline-block;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: .68rem;
+  letter-spacing: .14em;
+  padding: 4px 12px;
+  border-radius: 20px;
+  background: rgba(201,123,255,.08);
+  border: 1px solid rgba(201,123,255,.25);
+  color: var(--accent4);
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+
+.panel p {
+  color: var(--muted);
+  font-size: .9rem;
+  line-height: 1.7;
+}
+
+/* ── Animations ── */
+@keyframes fadeDown { from { opacity: 0; transform: translateY(-18px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeUp   { from { opacity: 0; transform: translateY(16px);  } to { opacity: 1; transform: translateY(0); } }
+</style>
 </head>
-
 <body>
-    <h1>TEST</h1>
-</body>
+<div class="page">
 
+  <!-- ═══ BACK NAV ═══ -->
+  <nav class="back-nav">
+    <a href="index.html" class="back-link">← Training Portal</a>
+  </nav>
+
+  <header>
+    <div class="eyebrow">Integration Test</div>
+    <h1>Placeholder Module</h1>
+    <p>This page exists to verify the new-file review &amp; integration workflow — no training content lives here yet.</p>
+  </header>
+
+  <div class="panel">
+    <div class="tag">Placeholder · Test</div>
+    <p>Once real content is ready, replace this panel and update the module card description in <code>index.html</code>.</p>
+  </div>
+
+</div>
+</body>
 </html>
