@@ -142,6 +142,11 @@
       box-shadow: 0 0 20px rgba(201, 123, 255, .35);
     }
 
+    .module-card.green:hover {
+      border-color: var(--accent3);
+      box-shadow: 0 0 20px rgba(127, 255, 110, .32);
+    }
+
     .module-num {
       font-family: 'Share Tech Mono', monospace;
       font-size: .68rem;
@@ -156,6 +161,10 @@
 
     .module-card.purple .module-num {
       color: var(--accent4);
+    }
+
+    .module-card.green .module-num {
+      color: var(--accent3);
     }
 
     .module-icon {
@@ -207,6 +216,12 @@
       color: var(--accent4);
     }
 
+    .module-card.green .tag {
+      background: rgba(127, 255, 110, .08);
+      border-color: rgba(127, 255, 110, .2);
+      color: var(--accent3);
+    }
+
     .module-cta {
       font-family: 'Share Tech Mono', monospace;
       font-size: .75rem;
@@ -225,6 +240,10 @@
 
     .module-card.purple .module-cta {
       color: var(--accent4);
+    }
+
+    .module-card.green .module-cta {
+      color: var(--accent3);
     }
 
     .module-cta .arrow {
@@ -275,6 +294,18 @@
 
     .module-card:nth-child(3) {
       animation-delay: .32s;
+    }
+
+    .module-card:nth-child(4) {
+      animation-delay: .42s;
+    }
+
+    .module-card:nth-child(5) {
+      animation-delay: .52s;
+    }
+
+    .module-card:nth-child(6) {
+      animation-delay: .62s;
     }
   </style>
 </head>
