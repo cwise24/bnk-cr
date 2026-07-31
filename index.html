@@ -1,358 +1,408 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Training Portal — Kubernetes &amp; Networking</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;800&display=swap" rel="stylesheet">
-<style>
-:root {
-  --bg:      #080c14;
-  --grid:    rgba(0,200,255,.04);
-  --panel:   rgba(5,20,40,.85);
-  --border:  rgba(0,200,255,.18);
-  --accent:  #00c8ff;
-  --accent2: #ff6b35;
-  --accent3: #7fff6e;
-  --accent4: #c97bff;
-  --text:    #c8e8ff;
-  --muted:   #5a7a9a;
-  --glow:    0 0 20px rgba(0,200,255,.35);
-}
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Training Portal — Kubernetes &amp; Networking</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;800&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --bg: #080c14;
+      --grid: rgba(0, 200, 255, .04);
+      --panel: rgba(5, 20, 40, .85);
+      --border: rgba(0, 200, 255, .18);
+      --accent: #00c8ff;
+      --accent2: #ff6b35;
+      --accent3: #7fff6e;
+      --accent4: #c97bff;
+      --text: #c8e8ff;
+      --muted: #5a7a9a;
+      --glow: 0 0 20px rgba(0, 200, 255, .35);
+    }
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
-body {
-  background: var(--bg);
-  font-family: 'Exo 2', sans-serif;
-  color: var(--text);
-  min-height: 100vh;
-  overflow-x: hidden;
-}
+    body {
+      background: var(--bg);
+      font-family: 'Exo 2', sans-serif;
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
 
-body::before {
-  content: '';
-  position: fixed; inset: 0;
-  background-image:
-    linear-gradient(var(--grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-  background-size: 40px 40px;
-  pointer-events: none;
-  z-index: 0;
-}
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
 
-.page {
-  position: relative; z-index: 1;
-  max-width: 1140px;
-  margin: 0 auto;
-  padding: 64px 28px 90px;
-}
+    .page {
+      position: relative;
+      z-index: 1;
+      max-width: 1140px;
+      margin: 0 auto;
+      padding: 64px 28px 90px;
+    }
 
-/* ── Header ── */
-header {
-  text-align: center;
-  margin-bottom: 64px;
-  animation: fadeDown .7s ease both;
-}
+    /* ── Header ── */
+    header {
+      text-align: center;
+      margin-bottom: 64px;
+      animation: fadeDown .7s ease both;
+    }
 
-.eyebrow {
-  font-family: 'Share Tech Mono', monospace;
-  font-size: .72rem;
-  letter-spacing: .28em;
-  color: var(--accent);
-  text-transform: uppercase;
-  margin-bottom: 14px;
-}
+    .eyebrow {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: .72rem;
+      letter-spacing: .28em;
+      color: var(--accent);
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
 
-header h1 {
-  font-size: clamp(2rem, 5vw, 3.4rem);
-  font-weight: 800;
-  letter-spacing: -.02em;
-  background: linear-gradient(135deg, var(--accent) 0%, #fff 52%, var(--accent4) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  line-height: 1.12;
-  margin-bottom: 18px;
-}
+    header h1 {
+      font-size: clamp(2rem, 5vw, 3.4rem);
+      font-weight: 800;
+      letter-spacing: -.02em;
+      background: linear-gradient(135deg, var(--accent) 0%, #fff 52%, var(--accent4) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1.12;
+      margin-bottom: 18px;
+    }
 
-header p {
-  color: var(--muted);
-  font-size: 1rem;
-  line-height: 1.7;
-  max-width: 580px;
-  margin: 0 auto;
-}
+    header p {
+      color: var(--muted);
+      font-size: 1rem;
+      line-height: 1.7;
+      max-width: 580px;
+      margin: 0 auto;
+    }
 
-/* ── Module grid ── */
-.modules {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 24px;
-  margin-bottom: 64px;
-}
+    /* ── Module grid ── */
+    .modules {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+      margin-bottom: 64px;
+    }
 
-.module-card {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 36px 30px 30px;
-  text-decoration: none;
-  color: var(--text);
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  position: relative;
-  overflow: hidden;
-  transition: border-color .25s ease, box-shadow .25s ease, transform .2s ease;
-}
+    .module-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 36px 30px 30px;
+      text-decoration: none;
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color .25s ease, box-shadow .25s ease, transform .2s ease;
+    }
 
-.module-card::before {
-  content: '';
-  position: absolute; inset: 0;
-  background: linear-gradient(135deg, rgba(0,200,255,.05) 0%, transparent 60%);
-  pointer-events: none;
-}
+    .module-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(0, 200, 255, .05) 0%, transparent 60%);
+      pointer-events: none;
+    }
 
-.module-card:hover {
-  border-color: var(--accent);
-  box-shadow: var(--glow);
-  transform: translateY(-4px);
-}
+    .module-card:hover {
+      border-color: var(--accent);
+      box-shadow: var(--glow);
+      transform: translateY(-4px);
+    }
 
-.module-card.orange:hover {
-  border-color: var(--accent2);
-  box-shadow: 0 0 20px rgba(255,107,53,.38);
-}
+    .module-card.orange:hover {
+      border-color: var(--accent2);
+      box-shadow: 0 0 20px rgba(255, 107, 53, .38);
+    }
 
-.module-card.purple:hover {
-  border-color: var(--accent4);
-  box-shadow: 0 0 20px rgba(201,123,255,.35);
-}
+    .module-card.purple:hover {
+      border-color: var(--accent4);
+      box-shadow: 0 0 20px rgba(201, 123, 255, .35);
+    }
 
-.module-num {
-  font-family: 'Share Tech Mono', monospace;
-  font-size: .68rem;
-  letter-spacing: .22em;
-  color: var(--accent);
-  text-transform: uppercase;
-}
-.module-card.orange .module-num { color: var(--accent2); }
-.module-card.purple .module-num { color: var(--accent4); }
+    .module-num {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: .68rem;
+      letter-spacing: .22em;
+      color: var(--accent);
+      text-transform: uppercase;
+    }
 
-.module-icon {
-  font-size: 2.2rem;
-  line-height: 1;
-}
+    .module-card.orange .module-num {
+      color: var(--accent2);
+    }
 
-.module-title {
-  font-size: 1.3rem;
-  font-weight: 700;
-  letter-spacing: -.01em;
-  line-height: 1.2;
-}
+    .module-card.purple .module-num {
+      color: var(--accent4);
+    }
 
-.module-desc {
-  font-size: .9rem;
-  color: var(--muted);
-  line-height: 1.65;
-  flex: 1;
-}
+    .module-icon {
+      font-size: 2.2rem;
+      line-height: 1;
+    }
 
-.module-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
+    .module-title {
+      font-size: 1.3rem;
+      font-weight: 700;
+      letter-spacing: -.01em;
+      line-height: 1.2;
+    }
 
-.tag {
-  font-family: 'Share Tech Mono', monospace;
-  font-size: .65rem;
-  letter-spacing: .08em;
-  padding: 3px 10px;
-  border-radius: 20px;
-  background: rgba(0,200,255,.08);
-  border: 1px solid rgba(0,200,255,.18);
-  color: var(--accent);
-  text-transform: uppercase;
-}
-.module-card.orange .tag { background: rgba(255,107,53,.08); border-color: rgba(255,107,53,.2); color: var(--accent2); }
-.module-card.purple .tag { background: rgba(201,123,255,.08); border-color: rgba(201,123,255,.2); color: var(--accent4); }
+    .module-desc {
+      font-size: .9rem;
+      color: var(--muted);
+      line-height: 1.65;
+      flex: 1;
+    }
 
-.module-cta {
-  font-family: 'Share Tech Mono', monospace;
-  font-size: .75rem;
-  letter-spacing: .15em;
-  color: var(--accent);
-  text-transform: uppercase;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 4px;
-}
-.module-card.orange .module-cta { color: var(--accent2); }
-.module-card.purple .module-cta { color: var(--accent4); }
+    .module-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
 
-.module-cta .arrow { display: inline-block; transition: transform .2s ease; }
-.module-card:hover .module-cta .arrow { transform: translateX(5px); }
+    .tag {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: .65rem;
+      letter-spacing: .08em;
+      padding: 3px 10px;
+      border-radius: 20px;
+      background: rgba(0, 200, 255, .08);
+      border: 1px solid rgba(0, 200, 255, .18);
+      color: var(--accent);
+      text-transform: uppercase;
+    }
 
-/* ── Footer ── */
-footer {
-  text-align: center;
-  padding-top: 40px;
-  border-top: 1px solid rgba(0,200,255,.08);
-  font-family: 'Share Tech Mono', monospace;
-  font-size: .68rem;
-  letter-spacing: .14em;
-  color: var(--muted);
-  text-transform: uppercase;
-}
+    .module-card.orange .tag {
+      background: rgba(255, 107, 53, .08);
+      border-color: rgba(255, 107, 53, .2);
+      color: var(--accent2);
+    }
 
-/* ── Animations ── */
-@keyframes fadeDown {
-  from { opacity: 0; transform: translateY(-18px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
+    .module-card.purple .tag {
+      background: rgba(201, 123, 255, .08);
+      border-color: rgba(201, 123, 255, .2);
+      color: var(--accent4);
+    }
 
-.module-card { animation: fadeDown .65s ease both; }
-.module-card:nth-child(1) { animation-delay: .12s; }
-.module-card:nth-child(2) { animation-delay: .22s; }
-.module-card:nth-child(3) { animation-delay: .32s; }
-</style>
+    .module-cta {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: .75rem;
+      letter-spacing: .15em;
+      color: var(--accent);
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    .module-card.orange .module-cta {
+      color: var(--accent2);
+    }
+
+    .module-card.purple .module-cta {
+      color: var(--accent4);
+    }
+
+    .module-cta .arrow {
+      display: inline-block;
+      transition: transform .2s ease;
+    }
+
+    .module-card:hover .module-cta .arrow {
+      transform: translateX(5px);
+    }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      padding-top: 40px;
+      border-top: 1px solid rgba(0, 200, 255, .08);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: .68rem;
+      letter-spacing: .14em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    /* ── Animations ── */
+    @keyframes fadeDown {
+      from {
+        opacity: 0;
+        transform: translateY(-18px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .module-card {
+      animation: fadeDown .65s ease both;
+    }
+
+    .module-card:nth-child(1) {
+      animation-delay: .12s;
+    }
+
+    .module-card:nth-child(2) {
+      animation-delay: .22s;
+    }
+
+    .module-card:nth-child(3) {
+      animation-delay: .32s;
+    }
+  </style>
 </head>
+
 <body>
-<div class="page">
+  <div class="page">
 
-  <header>
-    <div class="eyebrow">Kubernetes Training</div>
-    <h1>Networking &amp; Automation<br>Training Portal</h1>
-    <p>Interactive training modules covering BIG-IP Next for Kubernetes custom resources, NGINX inference routing, SR-IOV network virtualization, OVN-Kubernetes CNI, and Multus multi-homed pods.</p>
-  </header>
+    <header>
+      <div class="eyebrow">Kubernetes Training</div>
+      <h1>Networking &amp; Automation<br>Training Portal</h1>
+      <p>Interactive training modules covering BIG-IP Next for Kubernetes custom resources, NGINX inference routing,
+        SR-IOV network virtualization, OVN-Kubernetes CNI, and Multus multi-homed pods.</p>
+    </header>
 
-  <div class="modules">
+    <div class="modules">
 
-    <!-- Module 01 — BNK Custom Resources -->
-    <a href="BNK_Diagram_v4.html" class="module-card">
-      <div class="module-num">Module 01</div>
-      <div class="module-icon">🔗</div>
-      <div class="module-title">BNK Custom Resources</div>
-      <div class="module-desc">
-        Explore how BIG-IP Next for Kubernetes Custom Resources compose to define traffic policy from infrastructure to workload. Interactive connection diagram with live filter controls and per-CR detail panels.
-      </div>
-      <div class="module-tags">
-        <span class="tag">BIG-IP Next</span>
-        <span class="tag">CRDs</span>
-        <span class="tag">AngularJS</span>
-        <span class="tag">Traffic Policy</span>
-      </div>
-      <div class="module-cta">Launch module <span class="arrow">→</span></div>
-    </a>
+      <!-- Module 01 — BNK Custom Resources -->
+      <a href="BNK_Diagram_v4.html" class="module-card">
+        <div class="module-num">Module 01</div>
+        <div class="module-icon">🔗</div>
+        <div class="module-title">BNK Custom Resources</div>
+        <div class="module-desc">
+          Explore how BIG-IP Next for Kubernetes Custom Resources compose to define traffic policy from infrastructure
+          to workload. Interactive connection diagram with live filter controls and per-CR detail panels.
+        </div>
+        <div class="module-tags">
+          <span class="tag">BIG-IP Next</span>
+          <span class="tag">CRDs</span>
+          <span class="tag">AngularJS</span>
+          <span class="tag">Traffic Policy</span>
+        </div>
+        <div class="module-cta">Launch module <span class="arrow">→</span></div>
+      </a>
 
-    <!-- Module 02 — NGINX EPP -->
-    <a href="NGINX-EPP_Visualization_v5.html" class="module-card orange">
-      <div class="module-num">Module 02</div>
-      <div class="module-icon">⚡</div>
-      <div class="module-title">NGINX EPP Example</div>
-      <div class="module-desc">
-        Walk through NGINX Gateway Fabric's Endpoint Policy Protocol inference router. KV-cache aware scheduling, vLLM + LoRA routing, and real-time pod selection — all visualized with animated GSAP flows.
-      </div>
-      <div class="module-tags">
-        <span class="tag">NGINX GF</span>
-        <span class="tag">EPP</span>
-        <span class="tag">vLLM</span>
-        <span class="tag">Inference</span>
-      </div>
-      <div class="module-cta">Launch module <span class="arrow">→</span></div>
-    </a>
+      <!-- Module 02 — NGINX EPP -->
+      <a href="NGINX-EPP_Visualization_v5.html" class="module-card orange">
+        <div class="module-num">Module 02</div>
+        <div class="module-icon">⚡</div>
+        <div class="module-title">NGINX EPP Example</div>
+        <div class="module-desc">
+          Walk through NGINX Gateway Fabric's Endpoint Policy Protocol inference router. KV-cache aware scheduling, vLLM
+          + LoRA routing, and real-time pod selection — all visualized with animated GSAP flows.
+        </div>
+        <div class="module-tags">
+          <span class="tag">NGINX GF</span>
+          <span class="tag">EPP</span>
+          <span class="tag">vLLM</span>
+          <span class="tag">Inference</span>
+        </div>
+        <div class="module-cta">Launch module <span class="arrow">→</span></div>
+      </a>
 
-    <!-- Module 03 — SR-IOV in OCP -->
-    <a href="OpenShift-SRIOV_Diagram_v4.html" class="module-card purple">
-      <div class="module-num">Module 03</div>
-      <div class="module-icon">🚀</div>
-      <div class="module-title">SR-IOV in OCP</div>
-      <div class="module-desc">
-        Animated walkthrough of SR-IOV pod attachment and traffic flow on OpenShift with BNK. Step through network virtualization phases with detailed annotations and a full configuration reference.
-      </div>
-      <div class="module-tags">
-        <span class="tag">OpenShift</span>
-        <span class="tag">SR-IOV</span>
-        <span class="tag">BIG-IP Next</span>
-        <span class="tag">CNI</span>
-      </div>
-      <div class="module-cta">Launch module <span class="arrow">→</span></div>
-    </a>
+      <!-- Module 03 — SR-IOV in OCP -->
+      <a href="OpenShift-SRIOV_Diagram_v4.html" class="module-card purple">
+        <div class="module-num">Module 03</div>
+        <div class="module-icon">🚀</div>
+        <div class="module-title">SR-IOV in OCP</div>
+        <div class="module-desc">
+          Animated walkthrough of SR-IOV pod attachment and traffic flow on OpenShift with BNK. Step through network
+          virtualization phases with detailed annotations and a full configuration reference.
+        </div>
+        <div class="module-tags">
+          <span class="tag">OpenShift</span>
+          <span class="tag">SR-IOV</span>
+          <span class="tag">BIG-IP Next</span>
+          <span class="tag">CNI</span>
+        </div>
+        <div class="module-cta">Launch module <span class="arrow">→</span></div>
+      </a>
 
-    <!-- Module 04 — OVN-Kubernetes -->
-    <a href="OVNKubernetes_Visualization_v1.html" class="module-card green">
-      <div class="module-num">Module 04</div>
-      <div class="module-icon">🌐</div>
-      <div class="module-title">OVN-Kubernetes CNI</div>
-      <div class="module-desc">
-        Interactive walkthrough of OVN-Kubernetes networking on OpenShift. Explore pod-to-pod flows, east/west routing, network policies, and the OVN control plane — with animated step-by-step diagrams.
-      </div>
-      <div class="module-tags">
-        <span class="tag">OVN-K8s</span>
-        <span class="tag">OpenShift</span>
-        <span class="tag">CNI</span>
-        <span class="tag">Network Policy</span>
-      </div>
-      <div class="module-cta">Launch module <span class="arrow">→</span></div>
-    </a>
+      <!-- Module 04 — OVN-Kubernetes -->
+      <a href="OVNKubernetes_Visualization_v1.html" class="module-card green">
+        <div class="module-num">Module 04</div>
+        <div class="module-icon">🌐</div>
+        <div class="module-title">OVN-Kubernetes CNI</div>
+        <div class="module-desc">
+          Interactive walkthrough of OVN-Kubernetes networking on OpenShift. Explore pod-to-pod flows, east/west
+          routing, network policies, and the OVN control plane — with animated step-by-step diagrams.
+        </div>
+        <div class="module-tags">
+          <span class="tag">OVN-K8s</span>
+          <span class="tag">OpenShift</span>
+          <span class="tag">CNI</span>
+          <span class="tag">Network Policy</span>
+        </div>
+        <div class="module-cta">Launch module <span class="arrow">→</span></div>
+      </a>
 
-    <!-- Module 05 — CNI Multus -->
-    <a href="Multus_Visualization_v1.html" class="module-card orange">
-      <div class="module-num">Module 05</div>
-      <div class="module-icon">🔀</div>
-      <div class="module-title">CNI Multus</div>
-      <div class="module-desc">
-        Interactive deep-dive into Multus CNI — the meta-plugin that enables multi-homed pods. Step through the 6-phase request flow, compare thick vs thin plugin, explore use cases, pitfalls, and YAML reference.
-      </div>
-      <div class="module-tags">
-        <span class="tag">Multus</span>
-        <span class="tag">Multi-homed</span>
-        <span class="tag">SR-IOV</span>
-        <span class="tag">5G/Telco</span>
-      </div>
-      <div class="module-cta">Launch module <span class="arrow">→</span></div>
-    </a>
+      <!-- Module 05 — CNI Multus -->
+      <a href="Multus_Visualization_v1.html" class="module-card orange">
+        <div class="module-num">Module 05</div>
+        <div class="module-icon">🔀</div>
+        <div class="module-title">CNI Multus</div>
+        <div class="module-desc">
+          Interactive deep-dive into Multus CNI — the meta-plugin that enables multi-homed pods. Step through the
+          6-phase request flow, compare thick vs thin plugin, explore use cases, pitfalls, and YAML reference.
+        </div>
+        <div class="module-tags">
+          <span class="tag">Multus</span>
+          <span class="tag">Multi-homed</span>
+          <span class="tag">SR-IOV</span>
+          <span class="tag">5G/Telco</span>
+        </div>
+        <div class="module-cta">Launch module <span class="arrow">→</span></div>
+      </a>
 
-    <!-- Module 06 — NUMA Node -->
-    <a href="NUMA-Training_Interactive_v2.html" class="module-card purple">
-      <div class="module-num">Module 06</div>
-      <div class="module-icon">🔀</div>
-      <div class="module-title">NUMA</div>
-      <div class="module-desc">
-        Interactive module to discuss NUMA concepts and how it applies to DPDK and SRIOV.
-      </div>
-      <div class="module-tags">
-        <span class="tag">NUMA</span>
-        <span class="tag">Memory</span>
-        <span class="tag">SR-IOV</span>
-        <span class="tag">DPDK</span>
-      </div>
-      <div class="module-cta">Launch module <span class="arrow">→</span></div>
-    </a>
+      <!-- Module 06 — NUMA Node -->
+      <a href="NUMA-Training_Interactive_v2.html" class="module-card purple">
+        <div class="module-num">Module 06</div>
+        <div class="module-icon">🔀</div>
+        <div class="module-title">NUMA</div>
+        <div class="module-desc">
+          Interactive module to discuss NUMA concepts and how it applies to DPDK and SRIOV.
+        </div>
+        <div class="module-tags">
+          <span class="tag">NUMA</span>
+          <span class="tag">Memory</span>
+          <span class="tag">SR-IOV</span>
+          <span class="tag">DPDK</span>
+        </div>
+        <div class="module-cta">Launch module <span class="arrow">→</span></div>
+      </a>
 
-    <!-- Module 07 — Placeholder (integration test) -->
-    <a href="newrev.html" class="module-card purple">
-      <div class="module-num">Module 07</div>
-      <div class="module-icon">🧪</div>
-      <div class="module-title">Placeholder</div>
-      <div class="module-desc">
-        Test module used to verify the new-file review and integration workflow. No training content yet.
-      </div>
-      <div class="module-tags">
-        <span class="tag">Test</span>
-        <span class="tag">Placeholder</span>
-      </div>
-      <div class="module-cta">Launch module <span class="arrow">→</span></div>
-    </a>
+    </div>
+
+    <footer>Kubernetes Platform Training · 2026</footer>
 
   </div>
-
-  <footer>Kubernetes Platform Training · 2026</footer>
-
-</div>
 </body>
+
 </html>
