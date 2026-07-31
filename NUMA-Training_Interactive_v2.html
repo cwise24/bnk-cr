@@ -198,11 +198,12 @@ footer{border-top:1px solid var(--line);padding:32px 0;color:var(--dim);font-siz
     <a href="#m3">3 · Seeing it in Linux</a>
     <a href="#m4">4 · Chip layout settings</a>
     <a href="#m5">5 · Where your NIC lives</a>
-    <a href="#m6">6 · SR-IOV</a>
-    <a href="#m7">7 · Hugepages</a>
-    <a href="#m8">8 · DPDK</a>
-    <a href="#m9">9 · Packet journey</a>
-    <a href="#m10">10 · Checklist</a>
+    <a href="#mdrv">6 · Driver types</a>
+    <a href="#m6">7 · SR-IOV</a>
+    <a href="#m7">8 · Hugepages</a>
+    <a href="#m8">9 · DPDK</a>
+    <a href="#m9">10 · Packet journey</a>
+    <a href="#m10">11 · Checklist</a>
     <a href="#glossary">Glossary</a>
     <a href="#sources">Sources</a>
   </nav>
@@ -829,6 +830,13 @@ cat /sys/bus/pci/devices/0000:<span class="v">85</span>:00.0/numa_node
       Reading it before a BIOS change tells you about a machine that no longer exists.</p>
   </div>
 
+  <div class="callout info">
+    <div class="t">Before you act on this — check the next module</div>
+    <p>Knowing the card's node only helps if the card actually has a NUMA problem to solve, and not
+      every card does. <a href="#mdrv">Module 6</a> sorts network cards into four cases and tells you
+      which parts of this training apply to yours. It is worth two minutes before you start tuning.</p>
+  </div>
+
   <details class="deep">
     <summary>Go deeper — slot bandwidth is a separate problem<span class="tag">Advanced</span></summary>
     <div class="deepbody">
@@ -851,9 +859,298 @@ lspci -s <span class="v">85</span>:00.0 -vv | grep LnkSta
   <div class="quiz" data-quiz="q5"></div>
 </section>
 
-<!-- ================= MODULE 6 ================= -->
-<section id="m6" class="mod">
+<!-- ================= MODULE 6 — DRIVER TYPES ================= -->
+<section id="mdrv" class="mod">
   <div class="eyebrow">Module 6</div>
+  <h2>Which drivers care about NUMA — and which don't</h2>
+
+  <div class="onemin">
+    <div class="t">In one minute</div>
+    <p>Not every network card has a NUMA problem. It depends entirely on <b>which piece of software
+      is driving the card</b>.</p>
+    <p>There are four cases, and they need completely different things from you:</p>
+    <ul>
+      <li><b>You do everything</b> — the card is handed to an application, and nothing helps you.</li>
+      <li><b>Shared control</b> — the operating system keeps the card, an application takes the fast path.</li>
+      <li><b>The system can help, but only if you ask</b> — a normal Linux driver, with NUMA features
+        that ship switched off.</li>
+      <li><b>There is no node to get wrong</b> — virtual and software-only devices.</li>
+    </ul>
+    <p>Work out which case you are in <b>before</b> you start tuning. Half the advice in this training
+      does not apply to two of them.</p>
+  </div>
+
+  <h3>Which case am I in?</h3>
+  <p>Click through the questions. The answer tells you what you are responsible for.</p>
+
+  <div class="stage">
+    <div id="tierFlow"></div>
+  </div>
+  <div class="readout" id="tierOut"></div>
+
+  <h3>The four cases</h3>
+
+  <h4>Case 1 — The card is taken away from Linux</h4>
+  <p>This is the classic DPDK setup. The card is unbound from its normal Linux driver and bound to
+    <span class="gl" data-t="vfio">vfio-pci</span> instead, which hands it to an application.</p>
+  <p>Once that happens the card <b>disappears from Linux</b>. The DPDK documentation is blunt about
+    it: any network ports "under Linux control will be ignored and cannot be used by the
+    application" — and the reverse is equally true.<sup class="cite"><a href="#s15">15</a></sup>
+    <code>ifconfig</code> will not show it. <code>ethtool</code> will not touch it. None of Linux's
+    NUMA helpers apply, because there is no Linux network device any more.</p>
+  <div class="callout bad">
+    <div class="t">Everything is your job here</div>
+    <p>Which cores poll the card, which node the memory comes from, which node the buffers live on —
+      all of it is your decision, made through command-line options. Linux will not correct you and
+      will not warn you. <b>This is the case every other module in this training is written for.</b></p>
+  </div>
+
+  <h4>Case 2 — Shared: Linux keeps the card, the application takes the fast path</h4>
+  <p>Some cards support a split arrangement. In DPDK's words: "the NIC is controlled by the kernel,
+    while the data path is performed by the PMD directly on top of the
+    device."<sup class="cite"><a href="#s15">15</a></sup> These cards
+    <b>should not be unbound</b> from their normal driver.<sup class="cite"><a href="#s15">15</a></sup></p>
+  <p>You get the best of both: normal Linux tools keep working, and the hardware can split traffic so
+    the application sees only the part it cares about while Linux handles the
+    rest.<sup class="cite"><a href="#s15">15</a></sup></p>
+  <div class="callout">
+    <div class="t">What this means for NUMA</div>
+    <p>Both rulebooks apply at once. The application still chooses its own cores and memory (Case 1
+      rules), and Linux is still steering the traffic it keeps (Case 3 rules). If you tune only one
+      side, you have tuned half the card.</p>
+  </div>
+
+  <h4>Case 3 — A normal Linux driver</h4>
+  <p>This is every ordinary server: a standard driver, an interface with a name like
+    <code>eth0</code>, and Linux doing the networking.</p>
+  <p>Linux <b>does</b> understand NUMA here, and it has several features built to keep packet work
+    near the right memory. The catch is that most of them are <b>off by default</b>.</p>
+
+  <h4>First — what is a queue?</h4>
+  <p>One idea has to come first, because everything else in this case rests on it.</p>
+  <p>An old network card had a single line of incoming packets. One line means one core doing the
+    work, and one core cannot keep up with a fast link.</p>
+  <p>Modern cards have <b>many lines</b> — typically 8, 16 or more. These are called
+    <span class="gl" data-t="queue">queues</span>. Each queue can be handled by a different core, so
+    the work happens in parallel. Think of one queue as one checkout lane at a supermarket.</p>
+  <p>That raises an obvious question: <b>when a packet arrives, which lane does it go into?</b></p>
+
+  <h4>RSS is how the card picks a lane</h4>
+  <p><b>RSS</b> stands for <b>Receive Side Scaling</b>. It is the card's method for spreading arriving
+    packets across its queues.<sup class="cite"><a href="#s13">13</a></sup></p>
+  <p>It works by looking at a few fields in each packet — who sent it, who it is for, and which
+    application ports are involved — and turning them into a number. That number picks the
+    queue.<sup class="cite"><a href="#s13">13</a></sup></p>
+  <p>The important consequence is that <b>the same conversation always lands in the same queue</b>.
+    Packets from one connection stay together, in order, handled by one core. Different conversations
+    land in different queues and get handled in parallel. That is the whole trick.</p>
+
+  <div class="callout info">
+    <div class="t">Why this is a NUMA topic at all</div>
+    <p>Because a queue eventually has to be processed by <em>some</em> core, and that core will read
+      the packet out of <em>some</em> memory. If the queue's core sits on a different node from the
+      card, you are back to Module 10's long trips — this time arranged by default settings rather
+      than by anything you chose.</p>
+    <p>Linux says as much when recommending how many queues to configure: one per core if the card
+      has enough, "or otherwise <b>at least one for each memory domain</b>, where a memory domain is a
+      set of CPUs that share a particular memory level (L1, L2, NUMA node,
+      etc.)"<sup class="cite"><a href="#s13">13</a></sup> The kernel's own advice is written in NUMA
+      terms.</p>
+  </div>
+
+  <h4>What Linux gives you, and what is switched on</h4>
+  <p>Beyond RSS there are three more features, all with acronyms, all doing variations of the same
+    job: getting the right core to do the work. In plain terms:</p>
+  <table>
+    <thead><tr><th>What you want</th><th>The feature</th><th>Is it on?</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>The card spreads packets across lanes</b></td>
+        <td><span class="gl" data-t="rss">RSS</span> — the card sorts packets into queues</td>
+        <td>Usually on, but the number and layout of queues is the driver's choice.<sup class="cite"><a href="#s13">13</a></sup></td>
+      </tr>
+      <tr>
+        <td><b>Each lane wakes up a specific core</b></td>
+        <td>Interrupt affinity — pointing each queue's alert at a chosen core<sup class="cite"><a href="#s13">13</a></sup></td>
+        <td><b>Not aimed anywhere.</b> "By default, an IRQ may be handled on any CPU," and <code>irqbalance</code> "may override any manual settings."<sup class="cite"><a href="#s13">13</a></sup></td>
+      </tr>
+      <tr>
+        <td><b>Linux spreads the work further, in software</b></td>
+        <td><span class="gl" data-t="rps">RPS</span> — a software version of RSS, useful when the card has fewer queues than you have cores<sup class="cite"><a href="#s13">13</a></sup></td>
+        <td><b>Off.</b> "RPS remains disabled until explicitly configured."<sup class="cite"><a href="#s13">13</a></sup></td>
+      </tr>
+      <tr>
+        <td><b>Work happens on the core running your application</b></td>
+        <td><span class="gl" data-t="rfs">RFS</span> — steers processing to where the program waiting for the packet actually is<sup class="cite"><a href="#s13">13</a></sup></td>
+        <td><b>Off</b> until configured.<sup class="cite"><a href="#s13">13</a></sup></td>
+      </tr>
+      <tr>
+        <td><b>Outgoing packets use a sensible lane too</b></td>
+        <td><span class="gl" data-t="xps">XPS</span> — the same idea for transmit<sup class="cite"><a href="#s13">13</a></sup></td>
+        <td>Depends on the driver whether it is set up at all.<sup class="cite"><a href="#s13">13</a></sup></td>
+      </tr>
+    </tbody>
+  </table>
+  <p>You do not need to memorise those four acronyms. You need one takeaway: <b>Linux has the
+    machinery to keep packet work on the right node, and most of it is waiting to be switched
+    on.</b></p>
+
+  <div class="callout good">
+    <div class="t">The good news</div>
+    <p>Case 3 is far more forgiving than Case 1. Linux keeps working and makes reasonable general
+      choices. You are leaving performance unclaimed rather than falling off a cliff — and the fixes
+      are small settings changes, not an application rewrite.</p>
+  </div>
+
+  <h4>Case 4 — There is no node to get wrong</h4>
+  <p>Some network devices are not hardware at all. Software-only devices, devices created purely
+    inside an application, and the emulated cards a virtual machine sees have no slot, no wiring, and
+    therefore no node.</p>
+  <p>For these, the NUMA question changes shape. There is no card to be near. What still matters is
+    keeping the software's own threads and memory together — but the "find the card's node" step from
+    Module 5 simply has no answer.</p>
+  <div class="callout">
+    <div class="t">Also in this bucket: real cards your firmware forgot to describe</div>
+    <p>Sometimes <code>numa_node</code> reads <b><code>-1</code></b>. That does not mean the card has
+      no node. It means Linux was never told. The value normally comes from the system firmware, and
+      "-1 if the node is unknown."<sup class="cite"><a href="#s14">14</a></sup>
+      That is a firmware problem worth reporting — see the deeper panel before you try to override it.</p>
+  </div>
+
+  <h3>Same card, different answer</h3>
+  <p>Worth saying plainly: <b>these are not four types of hardware.</b> The same physical card can be
+    in Case 1 in the morning and Case 3 in the afternoon, because someone rebound its driver. The
+    case is a property of <em>how the card is currently being used</em>, not of what you bought.</p>
+
+  <details class="deep">
+    <summary>Go deeper — identifying the case, and the sysfs paths for each<span class="tag">Advanced</span></summary>
+    <div class="deepbody">
+      <h4>Which driver currently owns each device?</h4>
+<pre><span class="c"># DPDK's own view — groups devices by who owns them [15]</span>
+./usertools/dpdk-devbind.py --status
+
+<span class="c">Network devices using DPDK-compatible driver</span>
+<span class="c">============================================</span>
+<span class="c">0000:82:00.0 '82599EB 10-GbE NIC' drv=vfio-pci unused=ixgbe     &lt;- Case 1</span>
+
+<span class="c">Network devices using kernel driver</span>
+<span class="c">===================================</span>
+<span class="c">0000:04:00.1 'I350 1-GbE NIC' if=eth1 drv=igb unused=vfio-pci   &lt;- Case 3</span>
+
+<span class="c"># Or straight from sysfs — where does the driver symlink point?</span>
+basename $(readlink /sys/bus/pci/devices/0000:<span class="v">82</span>:00.0/driver)
+<span class="c"># vfio-pci / igb_uio / uio_pci_generic  -> Case 1</span>
+<span class="c"># ixgbe / i40e / ice / mlx5_core / igb  -> Case 3 (mlx5_core may be Case 2)</span>
+<span class="c"># no driver symlink at all              -> unbound</span>
+</pre>
+      <p>A device with a network interface name (<code>if=eth1</code>) is still owned by Linux. A
+        device with no interface name and <code>drv=vfio-pci</code> has been handed to an
+        application.<sup class="cite"><a href="#s15">15</a></sup> Note that <code>unused=</code> lists
+        the driver it <em>could</em> go back to.</p>
+
+      <h4>Case 1 — binding, and the two ways to do it</h4>
+      <p>DPDK recommends <code>vfio-pci</code> "in all cases" because it relies on
+        <span class="gl" data-t="iommu">IOMMU</span> protection. If no IOMMU is available it can run
+        in no-IOMMU mode, which "forgoes IOMMU protection" and "is inherently
+        unsafe."<sup class="cite"><a href="#s15">15</a></sup> The older UIO modules
+        (<code>uio_pci_generic</code>, <code>igb_uio</code>) are alternatives, also lacking IOMMU
+        protection and root-only.<sup class="cite"><a href="#s15">15</a></sup></p>
+      <p>A practical constraint: VFIO works in terms of IOMMU groups. "Any Virtual Function device can
+        usually be used with VFIO on its own, but physical devices may require either all ports bound
+        to VFIO, or some of them bound to VFIO while others not being bound to anything at
+        all."<sup class="cite"><a href="#s15">15</a></sup> If the device sits behind a PCI-to-PCI
+        bridge, the bridge is part of its IOMMU group and the bridge driver must also be
+        unbound.<sup class="cite"><a href="#s15">15</a></sup></p>
+
+      <h4>Case 3 — the sysfs paths worth knowing</h4>
+<pre><span class="c"># Which core handles each queue's interrupt? [13]</span>
+cat /proc/interrupts | grep <span class="v">eth0</span>
+
+<span class="c"># RPS — which cores may process packets from this queue [13]</span>
+/sys/class/net/<span class="v">eth0</span>/queues/rx-<span class="v">0</span>/rps_cpus
+
+<span class="c"># RFS — per-queue flow table size [13]</span>
+/sys/class/net/<span class="v">eth0</span>/queues/rx-<span class="v">0</span>/rps_flow_cnt
+/proc/sys/net/core/rps_sock_flow_entries
+
+<span class="c"># RFS global table, spread across nodes on a NUMA host [13]</span>
+numactl --interleave=all bash -c \
+  "echo 1048576 &gt;/proc/sys/net/core/rps_sock_flow_entries"
+
+<span class="c"># XPS — which cores may use this transmit queue [13]</span>
+/sys/class/net/<span class="v">eth0</span>/queues/tx-<span class="v">0</span>/xps_cpus
+</pre>
+      <p>Two refinements worth knowing. <b>Accelerated RFS</b> pushes the steering into the hardware:
+        packets are "sent directly to a CPU local to the thread consuming the data," and the
+        card-to-core map is built so that "for each CPU, the corresponding queue in the map is set to
+        be one whose processing CPU is closest in cache
+        locality."<sup class="cite"><a href="#s13">13</a></sup> And if RSS already gives you one queue
+        per core, "RPS is probably redundant and unnecessary" — RPS earns its keep when there are
+        fewer hardware queues than cores.<sup class="cite"><a href="#s13">13</a></sup></p>
+      <p>One caution on measurement: on processors with
+        <span class="gl" data-t="smt">SMT</span>, each thread counts as a separate CPU, and for
+        interrupt handling "HT has shown no benefit in initial tests, so limit the number of queues to
+        the number of CPU cores in the system."<sup class="cite"><a href="#s13">13</a></sup></p>
+
+      <h4>Virtual functions — finding the real card</h4>
+      <p>Module 7 explains why a virtual function inherits its physical card's node. Here is the
+        mechanism for finding it: a VF's sysfs directory contains a <code>physfn</code> symlink that
+        "points to the PCI device sysfs entry of the Physical Function this device associates
+        with."<sup class="cite"><a href="#s14">14</a></sup> The reverse links,
+        <code>virtfn&lt;N&gt;</code>, appear on the physical function.<sup class="cite"><a href="#s14">14</a></sup></p>
+<pre><span class="c"># From a VF, find its physical card, then that card's node [14]</span>
+cat /sys/bus/pci/devices/0000:<span class="v">86</span>:02.0/physfn/numa_node
+</pre>
+
+      <h4>The <code>-1</code> case, and why overriding it is a last resort</h4>
+      <p>The kernel ABI documentation for <code>numa_node</code> is worth reading in full, because it
+        contains a warning people miss:</p>
+      <div class="callout bad">
+        <div class="t">Verbatim from the kernel ABI documentation</div>
+        <p>"This file contains the NUMA node to which the PCI device is attached, or -1 if the node is
+          unknown. The initial value comes from an ACPI _PXM method or a similar firmware source. If
+          that is missing or incorrect, this file can be written to override the node. <b>In that case,
+          please report a firmware bug to the system vendor. Writing to this file taints the kernel
+          with TAINT_FIRMWARE_WORKAROUND, which reduces the supportability of your
+          system.</b>"<sup class="cite"><a href="#s14">14</a></sup></p>
+      </div>
+      <p>So the override exists, and it works, and it will make your support contract harder to use.
+        Check for a firmware update first. If you do override it, document it — a tainted kernel that
+        nobody remembers tainting is a bad afternoon later.</p>
+
+      <h4>The hybrid worth knowing about: AF_XDP</h4>
+      <p>AF_XDP is a DPDK driver that does <em>not</em> take the card away from Linux. It "creates the
+        AF_XDP socket and binds it to a specific netdev queue," and its prerequisites include "a Kernel
+        bound interface to attach to."<sup class="cite"><a href="#s16">16</a></sup> The application
+        sends and receives raw packets through that socket, bypassing the network
+        stack.<sup class="cite"><a href="#s16">16</a></sup></p>
+      <p>The result is a genuine split: <b>Case 3 rules govern the card</b> (it still has a driver, an
+        interface name, queues and interrupts), while <b>Case 1 rules govern the memory</b> the
+        application maps for packets. You also choose which queue to attach to
+        (<code>start_queue</code>, <code>queue_count</code>), and that queue's interrupt affinity
+        determines which core the kernel side runs on.<sup class="cite"><a href="#s16">16</a></sup></p>
+
+      <h4>Case 4 — the virtual device list</h4>
+      <p>DPDK devices created with <code>--vdev</code> have no PCI address and therefore no
+        firmware-reported node. The driver list includes purely software drivers — a null driver, a
+        ring-based driver, pcap, TAP, memif — alongside drivers for virtual machine devices, including
+        emulated devices, virtio, VMXNET3 and netvsc.<sup class="cite"><a href="#s16">16</a></sup></p>
+      <div class="callout">
+        <div class="t">A caution about virtual machines</div>
+        <p>Inside a guest, the NUMA topology you can see is whatever the hypervisor chose to present.
+          It may be accurate, simplified, or absent. Treat guest-visible node numbers as a starting
+          point and confirm the real placement on the host before concluding anything — this is
+          general practice rather than a documented vendor claim, so verify it on your own platform.</p>
+      </div>
+    </div>
+  </details>
+
+  <div class="quiz" data-quiz="qdrv"></div>
+</section>
+
+<!-- ================= MODULE 7 ================= -->
+<section id="m6" class="mod">
+  <div class="eyebrow">Module 7</div>
   <h2>SR-IOV — one card pretending to be many</h2>
 
   <div class="onemin">
@@ -934,7 +1231,7 @@ echo 0 &gt; /sys/bus/pci/devices/0000:<span class="v">85</span>:00.0/sriov_drive
 
 <!-- ================= MODULE 7 ================= -->
 <section id="m7" class="mod">
-  <div class="eyebrow">Module 7</div>
+  <div class="eyebrow">Module 8</div>
   <h2>Hugepages</h2>
 
   <div class="onemin">
@@ -1071,7 +1368,7 @@ dpdk-hugepages.py -s
 
 <!-- ================= MODULE 8 ================= -->
 <section id="m8" class="mod">
-  <div class="eyebrow">Module 8</div>
+  <div class="eyebrow">Module 9</div>
   <h2>DPDK and the one rule</h2>
 
   <div class="onemin">
@@ -1181,7 +1478,7 @@ dpdk-hugepages.py -s
 
 <!-- ================= MODULE 9 ================= -->
 <section id="m9" class="mod">
-  <div class="eyebrow">Module 9</div>
+  <div class="eyebrow">Module 10</div>
   <h2>Following one packet</h2>
 
   <div class="onemin">
@@ -1259,7 +1556,7 @@ dpdk-hugepages.py -s
 
 <!-- ================= MODULE 10 ================= -->
 <section id="m10" class="mod">
-  <div class="eyebrow">Module 10</div>
+  <div class="eyebrow">Module 11</div>
   <h2>The checklist</h2>
 
   <div class="onemin">
@@ -1436,6 +1733,43 @@ mkdir -p /mnt/huge &amp;&amp; mount -t hugetlbfs nodev /mnt/huge
       <br>"The NUMA instance for packets or objects from NIC, mempool, and ring should be the same",
       per-socket pool depletion, drop isolation sequence, running performance-critical logic on the
       correct node.</li>
+
+    <li id="s13"><b>Linux Kernel Documentation — Scaling in the Linux Networking Stack.</b>
+      <a href="https://docs.kernel.org/networking/scaling.html" target="_blank" rel="noopener">docs.kernel.org/networking/scaling.html</a>
+      <br>RSS and how the card selects a queue from packet fields; the "at least one queue for each
+      memory domain … (L1, L2, NUMA node, etc.)" recommendation; MSI-X interrupt routing, "by default,
+      an IRQ may be handled on any CPU", and irqbalance overriding manual settings; RPS being disabled
+      until explicitly configured and the same-memory-domain guidance; RPS redundancy when RSS gives
+      one queue per core; RFS steering to the consuming thread's core and the
+      <code>numactl --interleave=all</code> guidance on NUMA hosts; accelerated RFS and the cache-locality
+      queue map; XPS and cache-sharing guidance; the SMT/queue-count caution.</li>
+
+    <li id="s14"><b>Linux Kernel ABI — sysfs-bus-pci.</b>
+      <a href="https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-bus-pci" target="_blank" rel="noopener">kernel.org — Documentation/ABI/testing/sysfs-bus-pci</a>
+      <br>The <code>numa_node</code> attribute: "the NUMA node to which the PCI device is attached, or
+      -1 if the node is unknown", its origin in an ACPI _PXM method or similar firmware source, the
+      write-to-override behaviour, the instruction to report a firmware bug, and the
+      TAINT_FIRMWARE_WORKAROUND consequence. Also the <code>physfn</code> and <code>virtfn&lt;N&gt;</code>
+      SR-IOV symlinks, and <code>sriov_numvfs</code> / <code>sriov_drivers_autoprobe</code> semantics.</li>
+
+    <li id="s15"><b>DPDK Getting Started Guide for Linux — Linux Drivers.</b>
+      <a href="https://doc.dpdk.org/guides/linux_gsg/linux_drivers.html" target="_blank" rel="noopener">doc.dpdk.org — linux_drivers</a>
+      <br>Binding and unbinding devices; ports under Linux control being ignored by the application;
+      <code>dpdk-devbind.py --status</code> output format; the recommendation of <code>vfio-pci</code>
+      "in all cases"; no-IOMMU mode being "inherently unsafe"; UIO alternatives and their limitations;
+      IOMMU group constraints and PCI-to-PCI bridge implications; the bifurcated driver model — "the
+      NIC is controlled by the kernel, while the data path is performed by the PMD directly on top of
+      the device" — and the instruction not to unbind those devices.</li>
+
+    <li id="s16"><b>DPDK Network Interface Controller Drivers — AF_XDP Poll Mode Driver</b>
+      (and the driver index).
+      <a href="https://doc.dpdk.org/guides/nics/af_xdp.html" target="_blank" rel="noopener">doc.dpdk.org — af_xdp</a>
+      <br>AF_XDP creating a socket bound to a specific netdev queue, the requirement for "a Kernel
+      bound interface to attach to", bypassing the network stack, and the queue-selection arguments.
+      The accompanying driver index is the source for the existence of software-only and
+      virtual-machine device drivers (null, ring, pcap, TAP, memif, emulated devices, virtio, VMXNET3,
+      netvsc).</li>
+
   </ol>
 
   <div class="callout">
@@ -1522,7 +1856,19 @@ const GLOSSARY={
  mpps:['Mpps','Millions of packets per second. The usual unit for packet-processing throughput, because small packets are harder than big ones.'],
  gts:['GT/s','Gigatransfers per second. How fast a link signals. Not the same as gigabits per second, because some bits carry encoding overhead.'],
  mts:['MT/s','Megatransfers per second. The equivalent measure for memory speed.'],
- rss:['RSS','Receive Side Scaling. A network card feature that spreads incoming packets across several queues so multiple cores can work in parallel.'],
+ rss:['RSS — Receive Side Scaling','How a network card decides which of its queues an arriving packet goes into. It looks at who sent the packet, who it is for, and which ports are involved, and turns that into a queue number. The same conversation always lands in the same queue, so packets stay in order and one core handles that conversation — while other conversations are handled in parallel.'],
+ queue:['Queue','One line of packets waiting to be handled, on a network card. Old cards had one; modern cards have many (often 8, 16 or more) so several cores can work at the same time. Think of one queue as one supermarket checkout lane.'],
+ rps:['RPS — Receive Packet Steering','A software version of RSS, done by Linux rather than the card. Useful when the card has fewer queues than you have cores. Off by default — you have to switch it on and tell it which cores to use.'],
+ rfs:['RFS — Receive Flow Steering','Goes one step further than RPS: it tries to do the packet work on the very core where the application waiting for that packet is running, so the data is already close by. Off by default.'],
+ xps:['XPS — Transmit Packet Steering','The same idea as RPS but for packets going out: choosing which transmit queue a core should use, so that sending stays local to that core.'],
+ irq:['Interrupt (IRQ)','A signal from hardware telling a processor core "something needs attention". Each network card queue has its own, and it can be pointed at a specific core — but by default it is not pointed anywhere in particular.'],
+ irqbalance:['irqbalance','A background service that automatically moves interrupts between cores to spread load. Helpful on general-purpose servers, unhelpful for tuned networking, because it can undo affinity settings you made deliberately.'],
+ netdev:['Network interface (netdev)','The named network device Linux shows you, like eth0 or ens5f1. If a card has one, Linux still owns it. If a card has been handed to an application, it no longer has one.'],
+ bifurcated:['Bifurcated driver','A split arrangement where Linux keeps control of the network card while an application drives the fast data path directly. You keep normal Linux tools and get near-direct speed at the same time.'],
+ vdev:['Virtual device (--vdev)','A network device created purely in software by an application, rather than being real hardware in a slot. It has no physical location, so it has no NUMA node.'],
+ afxdp:['AF_XDP','A way for an application to receive packets fast while the card stays under Linux control. A hybrid: Linux still owns the card, but the application owns the memory the packets land in.'],
+ umem:['UMEM','The block of memory an AF_XDP application sets aside for packets. The application allocates it, so the application decides which NUMA node it lives on.'],
+ pxm:['ACPI _PXM','The piece of system firmware information that tells Linux which NUMA node a device belongs to. If the firmware does not provide it, Linux reports the node as -1 — unknown.'],
  aspm:['ASPM','Active State Power Management. A PCIe power-saving feature that adds latency, so it is usually disabled for low-latency networking.'],
  sysfs:['sysfs','The /sys directory in Linux — a set of virtual files exposing hardware information. Reading numa_node from it is how you find a card\'s node.'],
  numactl:['numactl','A command-line tool for viewing NUMA layout and for running a program bound to specific nodes.'],
@@ -1866,6 +2212,85 @@ document.querySelectorAll('#intelCtrls .btn').forEach(b=>b.addEventListener('cli
   b.classList.add('on'); applyIntel(b.dataset.mode);}));
 applyIntel('UMA');
 
+/* ============================ M6 driver tier decision flow ============================ */
+const TIER_Q={
+ start:{
+   q:'Is this a real, physical card plugged into a slot?',
+   a:[['Yes — it is hardware','q2'],
+      ['No — it is a software or virtual device','c4v'],
+      ['I am inside a virtual machine','c4vm']]},
+ q2:{
+   q:'Does Linux still show it as a network interface (a name like eth0)?',
+   hint:'Check with: ls /sys/class/net/  — or look for "if=" in dpdk-devbind.py --status',
+   a:[['Yes, it has an interface name','q3'],
+      ['No — it has been handed to an application','c1'],
+      ['It has a name, but an app also drives it directly','c2']]},
+ q3:{
+   q:'Last check — what does its numa_node file say?',
+   hint:'cat /sys/bus/pci/devices/<address>/numa_node',
+   a:[['A number: 0, 1, 2 …','c3'],
+      ['-1','c4unknown']]}
+};
+const TIER_R={
+ c1:{n:'Case 1 — the card was taken away from Linux',c:'#f2637e',
+   d:'The card is bound to vfio-pci (or a UIO module) and handed to an application. Linux tooling cannot see it and none of the kernel\'s NUMA helpers apply. <b>Every NUMA decision is yours</b>: which cores poll, which node the memory comes from, which node the buffers live on. Nothing will warn you if you get it wrong. Modules 8 to 11 are written for exactly this case. [15]'},
+ c2:{n:'Case 2 — shared control (bifurcated)',c:'#f7b955',
+   d:'Linux controls the card while an application drives the fast path directly on top of it. Do <b>not</b> unbind this device from its driver. <b>Both rulebooks apply:</b> the application picks its own cores and memory, and Linux is still steering whatever traffic it keeps. Tune both sides or you have tuned half the card. [15]'},
+ c3:{n:'Case 3 — a normal Linux driver',c:'#5ddc9a',
+   d:'Linux owns the card and does the networking. The NUMA machinery exists — queue placement, interrupt aiming, and software steering — but most of it ships switched off, and interrupts are not aimed at any particular core by default. Forgiving: you are leaving performance unclaimed rather than falling off a cliff, and the fixes are settings changes. [13]'},
+ c4v:{n:'Case 4 — a software or virtual device',c:'#7aa2f7',
+   d:'No slot, no wiring, no node. The "find the card\'s node" step simply has no answer here. What still matters is keeping the software\'s own threads and memory together — but do not go hunting for a device node that does not exist. [16]'},
+ c4vm:{n:'Case 4 — inside a virtual machine',c:'#7aa2f7',
+   d:'The topology you can see is whatever the hypervisor chose to present. It may be accurate, simplified, or absent entirely. Treat guest-visible node numbers as a starting point and confirm the real placement on the host before concluding anything. If a passed-through card appears with a real node, Cases 1 to 3 still apply to it inside the guest.'},
+ c4unknown:{n:'Special case — the firmware never said',c:'#f7b955',
+   d:'A numa_node of <b>-1</b> does not mean the card has no node. It means Linux was never told: the value "comes from an ACPI _PXM method or a similar firmware source", and -1 signals it is unknown. This is a firmware problem. Look for a BIOS update first — the file can be written to override the node, but doing so <b>taints the kernel</b> and "reduces the supportability of your system". [14]'}
+};
+(function tierFlow(){
+  const host=document.getElementById('tierFlow'); if(!host) return;
+  const out=document.getElementById('tierOut');
+  function render(key){
+    host.innerHTML='';
+    const node=TIER_Q[key];
+    if(node){
+      const q=document.createElement('div');
+      q.style.cssText='font-size:16px;font-weight:600;margin-bottom:6px;color:var(--txt)';
+      q.textContent=node.q; host.appendChild(q);
+      if(node.hint){
+        const hh=document.createElement('div');
+        hh.style.cssText='font-family:var(--mono);font-size:12px;color:var(--dim);margin-bottom:14px';
+        hh.textContent=node.hint; host.appendChild(hh);
+      }
+      const wrap=document.createElement('div');
+      wrap.style.cssText='display:flex;flex-direction:column;gap:8px';
+      node.a.forEach(([label,next])=>{
+        const b=document.createElement('button');
+        b.className='opt'; b.type='button'; b.textContent=label;
+        b.addEventListener('click',()=>render(next));
+        wrap.appendChild(b);
+      });
+      host.appendChild(wrap);
+      gsap.from(wrap.children,{y:10,opacity:0,duration:.32,stagger:.05,ease:'power2.out'});
+      out.innerHTML='Answer the question above to find out which of the four cases your device is in, '+
+        'and therefore which parts of this training actually apply to it.';
+    } else {
+      const r=TIER_R[key];
+      const box=document.createElement('div');
+      box.style.cssText='border-left:3px solid '+r.c+';padding:4px 0 4px 16px';
+      box.innerHTML='<div style="font-size:17px;font-weight:700;color:'+r.c+';margin-bottom:8px">'+r.n+'</div>';
+      host.appendChild(box);
+      const again=document.createElement('button');
+      again.className='btn'; again.type='button'; again.textContent='↺ Start over';
+      again.style.marginTop='16px';
+      again.addEventListener('click',()=>render('start'));
+      host.appendChild(again);
+      out.innerHTML='<b>'+r.n+'</b><br>'+r.d;
+      gsap.from(box,{y:10,opacity:0,duration:.35,ease:'power2.out'});
+      gsap.fromTo(out,{opacity:.3},{opacity:1,duration:.4});
+    }
+  }
+  render('start');
+})();
+
 /* ============================ M7 hugepages ============================ */
 (function(){
   const g=document.getElementById('hugeRows');
@@ -2103,6 +2528,71 @@ const QUIZ={
       'Use only one card per server'],
    a:1,
    e:'"If you are using 2 or more ports from different NICs, it is best to ensure that these NICs are on the same CPU socket." Splitting them means your application must straddle two nodes no matter how it is arranged. [7]'}
+ ],
+ qdrv:[
+  {q:'A network card has been handed to a DPDK application. What can Linux still do for it?',
+   o:['Everything it normally does — the card just runs faster',
+      'Nothing — the card is no longer a Linux network device, so none of the kernel NUMA features apply',
+      'Only interrupt balancing',
+      'Only the memory allocation'],
+   a:1,
+   e:'Once a card is unbound from its kernel driver and bound to vfio-pci, it disappears from Linux. ifconfig and ethtool will not see it, and there is no interface for the kernel to steer. Every NUMA decision becomes yours, with nothing to catch mistakes. [15]'},
+  {q:'What is a network card queue, and why do modern cards have several?',
+   o:['A backlog of packets that could not be delivered',
+      'A separate line of incoming packets, so several cores can work in parallel instead of one core doing everything',
+      'A buffer that stores packets during a reboot',
+      'A list of connected devices'],
+   a:1,
+   e:'One line of packets means one core doing the work, which cannot keep up with a fast link. Modern cards have many queues — often 8, 16 or more — so different cores handle different traffic at the same time. Think of one queue as one supermarket checkout lane.'},
+  {q:'What does RSS do?',
+   o:['Compresses packets to save bandwidth',
+      'Decides which of the card\'s queues each arriving packet goes into, keeping one conversation together in one queue',
+      'Encrypts traffic between two servers',
+      'Restarts the network driver after a failure'],
+   a:1,
+   e:'RSS — Receive Side Scaling — looks at who sent the packet, who it is for, and which ports are involved, then turns that into a queue number. The same conversation always lands in the same queue, so packets stay in order and one core handles it, while other conversations run in parallel. [13]'},
+  {q:'Why is RSS a NUMA topic and not just a load-balancing one?',
+   o:['Because RSS moves memory between nodes',
+      'Because each queue is eventually processed by some core, and if that core is on a different node from the card you get the long trips from Module 10',
+      'Because RSS only works on single-processor servers',
+      'Because RSS disables hugepages'],
+   a:1,
+   e:'Queue placement decides which core touches the packet and therefore which memory it reads. Linux writes its own guidance in NUMA terms: configure one queue per core, "or otherwise at least one for each memory domain, where a memory domain is a set of CPUs that share a particular memory level (L1, L2, NUMA node, etc.)". [13]'},
+  {q:'On an ordinary Linux server, are the kernel\'s NUMA steering features switched on for you?',
+   o:['Yes, they are enabled and tuned automatically',
+      'Mostly no — interrupts are not aimed at any particular core by default, and the software steering features stay off until configured',
+      'Only on servers with more than two processors',
+      'Only when hugepages are enabled'],
+   a:1,
+   e:'"By default, an IRQ may be handled on any CPU", and RPS "remains disabled until explicitly configured". The machinery exists and is documented in NUMA terms, but it waits for you. irqbalance, if running, may also override affinity you set by hand. [13]'},
+  {q:'Your card\'s numa_node file contains -1. What does that mean?',
+   o:['The card is not connected to any processor',
+      'The card is faulty',
+      'Linux was never told which node it belongs to, because the system firmware did not report it',
+      'The card is shared equally between all nodes'],
+   a:2,
+   e:'The value "comes from an ACPI _PXM method or a similar firmware source", and is "-1 if the node is unknown". The card certainly has a physical location — your firmware just did not describe it. Look for a BIOS update first. [14]'},
+  {q:'ADVANCED — Why should you not simply write the correct node into numa_node and move on?',
+   o:['The write is ignored by the kernel',
+      'It taints the kernel with TAINT_FIRMWARE_WORKAROUND, which "reduces the supportability of your system"',
+      'It only lasts until the next packet',
+      'It requires rebuilding the kernel'],
+   a:1, deep:true,
+   e:'The override exists and works, but the kernel ABI documentation is explicit: report a firmware bug to the vendor, and note that writing to this file taints the kernel and reduces supportability. If you do it anyway, document it — an unexplained tainted kernel is a bad afternoon later. [14]'},
+  {q:'ADVANCED — Which case is AF_XDP, and why is it awkward?',
+   o:['Case 1, because it is a DPDK driver',
+      'Case 3, because the card keeps its kernel driver',
+      'Both — Case 3 rules govern the card, Case 1 rules govern the packet memory the application allocates',
+      'Case 4, because it is a virtual device'],
+   a:2, deep:true,
+   e:'AF_XDP "creates the AF_XDP socket and binds it to a specific netdev queue" and requires "a Kernel bound interface to attach to". So the card still has a driver, an interface name, queues and interrupts — Case 3 territory — while the memory the packets land in is the application\'s, which is Case 1 territory. Tune both. [16]'},
+  {q:'ADVANCED — Are the four cases properties of the hardware you bought?',
+   o:['Yes — each card is manufactured for one case',
+      'No — the same physical card can move between cases depending on which driver is currently bound to it',
+      'Yes, but only for SR-IOV capable cards',
+      'No, the case is set permanently at first boot'],
+   a:1, deep:true,
+   e:'The case describes how the card is being used right now, not what it is. Rebinding a card from ixgbe to vfio-pci moves it from Case 3 to Case 1 in a single command — which is exactly why you check dpdk-devbind.py --status or the driver symlink rather than assuming. [15]'}
  ],
  q6:[
   {q:'What does SR-IOV do?',
