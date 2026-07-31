@@ -1,0 +1,14 @@
+# secrets
+.env.local
+
+# agent instruction — local-only, not shipped content
+BNK-CR_Style-Guide_v1.md
+BNK-CR_CLI-Guide_v1.md
+
+# per-file processed markers
+*.processed
+
+.claude
+
+#rm mac
+.DS_Store
