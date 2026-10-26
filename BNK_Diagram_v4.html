@@ -1108,7 +1108,7 @@
             category: 'Gateway / Routing',
             cat: 'gateway',
             color: '#00c8ff',
-            url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/custom-resource-definitions/bnk-bnkgateway.html',
+            url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/custom-resource-definitions/bnk-GatewaySettings.html',
             desc: 'Used with the F5 IPAM Controller (FIC) to automatically allocate VIP addresses for a Gateway. <strong style="color:#00c8ff">Note:</strong> Using BNKGateway in BIG-IP for Kubernetes is optional. <a href="https://clouddocs.f5.com/bigip-next-for-kubernetes/2.1.0/bnk-ficforgatewayapi.html" target="_blank" style="color: orange;">Example</a>'
           },
           {
@@ -1140,7 +1140,7 @@
             category: 'Policy Attachment',
             cat: 'policy',
             color: '#c97bff',
-            url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/custom-resource-definitions/bnk-irule-in-gatewayapi.html#gnknetpolicy',
+            url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/custom-resource-definitions/bnk-NetPolicy.html',
             desc: 'Attaches iRule or general network policy at the Gateway level or at an individual Listener. Enables custom traffic manipulation without modifying routes.'
           },
           {
@@ -1164,7 +1164,7 @@
             category: 'Security / Firewall',
             cat: 'security',
             color: '#7fff6e',
-            url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/custom-resource-definitions/bnk-bnkSecPolicy.html',
+            url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/custom-resource-definitions/bnk-SecPolicy.html',
             desc: 'Higher-level security wrapper that references an F5BigFwPolicy. Provides a Kubernetes-native way to compose and attach security posture to a Gateway.'
           },
           {
@@ -1180,7 +1180,7 @@
             category: 'Network / Egress',
             cat: 'network',
             color: '#ff6b35',
-            url: 'https://clouddocs.f5.com/service-proxy/latest/spk-snatpool-crd.html',
+            url: 'https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/custom-resource-definitions/spk-snatpool-crd.html',
             desc: 'An optional pool of routable SNAT IP addresses used when F5SPKEgress is configured with <code>SRC_TRANS_SNATPOOL</code>. By default all IPs are advertised via BGP; use prefixList and routeMaps to restrict advertisement. Supports shared SNAT address mode for large-scale deployments where multiple TMM pods share the same SNAT addresses.'
           },
           {
